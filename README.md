@@ -15,6 +15,7 @@ Features:
 - Sends typing state
 - Shows unread messages count
 - Tries to restore unread messages count after screen lock/unlock
+- Search provider for buddys from connected accounts
 
 Tested on Gnome Shell 3.10 and Pidgin 2.10.9 with Jabber protocol.
 
