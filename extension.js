@@ -25,6 +25,7 @@ const Tp = imports.gi.TelepathyGLib;
 const PopupMenu = imports.ui.popupMenu;
 const St = imports.gi.St;
 const Clutter = imports.gi.Clutter;
+const Convenience = Me.imports.convenience;
 
 
 function wrappedText(text, sender, timestamp, direction) {
@@ -317,14 +318,21 @@ const PidginSearchProvider = new Lang.Class({
 	_init: function(client) {
 		this.id = 'pidgin';
 		this._client = client;
+		this._enabled = false;
 	},
 
 	enable: function() {
-		Main.overview.addSearchProvider(this);
+		if (!this._enabled) {
+			Main.overview.addSearchProvider(this);
+			this._enabled = true;
+		}
 	},
 
 	disable: function() {
-		Main.overview.removeSearchProvider(this);
+		if (this._enabled) {
+			Main.overview.removeSearchProvider(this);
+			this._enabled = false;
+		}
 	},
 
 	_createIconForBuddy: function(buddy, status_code, iconSize) {
@@ -334,7 +342,7 @@ const PidginSearchProvider = new Lang.Class({
 		if (icon && icon != 0) {
 			box.add_actor(new St.Icon({
 				gicon: new Gio.FileIcon({
-					file: Gio.File.new_for_uri('file://' + p.PurpleBuddyIconGetFullPathSync(icon)) 
+					file: Gio.File.new_for_uri('file://' + p.PurpleBuddyIconGetFullPathSync(icon))
 				}),
 				icon_size: iconSize
 			}));
@@ -448,11 +456,29 @@ PidginClient.prototype = {
 		this._setAvailable = 0;
 		this._setUnavailable = 0;
 		this._disable_timestamp = 0;
-		this._searchProvider = new PidginSearchProvider(this);
+		this._searchProvider = null;
+		this._settings = Convenience.getSettings();
+		this._enableSearchProviderChangeId =
+			this._settings.connect(
+				'changed::enable-search-provider',
+				Lang.bind(this, this._enableSearchProviderChanged));
+	},
+
+	_enableSearchProviderChanged: function() {
+		if (this._settings.get_boolean('enable-search-provider')) {
+			if (this._searchProvider == null) {
+				this._searchProvider = new PidginSearchProvider(this);
+			}
+			this._searchProvider.enable();
+		} else {
+			if (this._searchProvider != null) {
+				this._searchProvider.disable();
+			}
+		}
 	},
 
 	enable: function() {
-		this._searchProvider.enable();
+		this._enableSearchProviderChanged();
 		// existing conversations
 		let conversations = this._proxy.PurpleGetImsSync().toString().split(',');
 		for (let i in conversations) {
@@ -505,6 +531,9 @@ PidginClient.prototype = {
 				this._pending_messages[key] = src._pendingMessages;
 				src.destroy();
 			}
+		}
+		if (this._enableSearchProviderChangeId > 0) {
+			this._settings.disconnect(this._enableSearchProviderChangeId);
 		}
 		this._searchProvider.disable();
 	},

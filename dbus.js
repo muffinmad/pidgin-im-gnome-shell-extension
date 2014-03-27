@@ -3267,8 +3267,8 @@ const PidginIface = <interface name='im.pidgin.purple.PurpleInterface'>
     </signal>
     <signal name='ReceivedChatMsg'>
       <arg type='i'/>
-      <arg type='i'/>
-      <arg type='i'/>
+      <arg type='s'/>
+      <arg type='s'/>
       <arg type='i'/>
       <arg type='u'/>
     </signal>
