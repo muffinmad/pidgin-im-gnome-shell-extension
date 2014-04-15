@@ -323,14 +323,20 @@ const PidginSearchProvider = new Lang.Class({
 
 	enable: function() {
 		if (!this._enabled) {
-			Main.overview.addSearchProvider(this);
+			try {
+				Main.overview.addSearchProvider(this);
+			} catch (e) {
+			}
 			this._enabled = true;
 		}
 	},
 
 	disable: function() {
 		if (this._enabled) {
-			Main.overview.removeSearchProvider(this);
+			try {
+				Main.overview.removeSearchProvider(this);
+			} catch (e) {
+			}
 			this._enabled = false;
 		}
 	},
