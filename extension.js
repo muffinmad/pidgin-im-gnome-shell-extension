@@ -541,7 +541,9 @@ PidginClient.prototype = {
 		if (this._enableSearchProviderChangeId > 0) {
 			this._settings.disconnect(this._enableSearchProviderChangeId);
 		}
-		this._searchProvider.disable();
+		if (this._searchProvider != null) {
+			this._searchProvider.disable();
+		}
 	},
 
 	get disable_timestamp() {
