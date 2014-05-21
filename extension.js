@@ -122,10 +122,10 @@ function getStatusIcon(s) {
  * https://wiki.gnome.org/Projects/GnomeShell/Gjs_StyleGuide
  */
 function Source(client, account, author, conversation) {
-    this._init(client, account, author, conversation);
+	 this._init(client, account, author, conversation);
 }
 Source.prototype = {
-    __proto__: MessageTray.Source.prototype,
+	 __proto__: MessageTray.Source.prototype,
 
 	_init: function(client, account, author, conversation) {
 		let proxy = client.proxy;
@@ -139,22 +139,12 @@ Source.prototype = {
 		this._conv_im = proxy.PurpleConvImSync(this._conversation);
 		this._conv_name = proxy.PurpleConversationGetNameSync(this._conversation).toString();
 		this._conv_gc = proxy.PurpleConversationGetGcSync(this._conversation);
-		this._buddy = proxy.PurpleFindBuddySync(account, author);
-		this._buddy_alias = _fixText(proxy.PurpleBuddyGetAliasSync(this._buddy));
-		this._buddy_presence = proxy.PurpleBuddyGetPresenceSync(this._buddy);
-		this._get_status_id();
 
-		this.parent(this._buddy_alias);
+		//this.parent(this._title);
+		MessageTray.Source.prototype._init.call(this, this._title);
 
 		this.isChat = true;
 		this._pendingMessages = [];
-
-		this._buddy_icon = proxy.PurpleBuddyGetIconSync(this._buddy);
-		if (this._buddy_icon && this._buddy_icon != 0) {
-			this._buddy_icon_file = 'file://' + proxy.PurpleBuddyIconGetFullPathSync(this._buddy_icon);
-		} else {
-			this._buddy_icon_file = false;
-		}
 
 		this._notification = new TelepathyClient.ChatNotification(this);
 		this._notification.setUrgency(MessageTray.Urgency.HIGH);
@@ -163,16 +153,6 @@ Source.prototype = {
 
 		Main.messageTray.add(this);
 		this.pushNotification(this._notification);
-
-		this._buddyStatusChangeId = proxy.connectSignal('BuddyStatusChanged', Lang.bind(this, this._onBuddyStatusChange));
-		this._buddySignedOffId = proxy.connectSignal('BuddySignedOff', Lang.bind(this, this._onBuddySignedOff));
-		this._buddySignedOnId = proxy.connectSignal('BuddySignedOn', Lang.bind(this, this._onBuddySignedOn));
-	},
-
-	_get_status_id: function() {
-		let proxy = this._client.proxy;
-		let buddy_status = proxy.PurplePresenceGetActiveStatusSync(this._buddy_presence);
-		this._status_id = getStatusCode(proxy.PurpleStatusGetIdSync(buddy_status));
 	},
 
 	_markAllSeen: function() {
@@ -200,7 +180,7 @@ Source.prototype = {
 
 		let _now = Date.now() / 1000;
 		let _ts = timestamp == null ? _now : timestamp;
-		let message = wrappedText(text, this._buddy_alias, _ts, direction);
+		let message = this._get_text(text, _ts, direction);
 		this._notification.appendMessage(message, false);
 
 		if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
@@ -215,10 +195,12 @@ Source.prototype = {
 		}
 	},
 
+	/*
 	buildRightClickMenu: function() {
 		// notifications doesn't work after popup showed. disable menu for now
 		return null;
 	},
+	*/
 
 	setChatState: function(state) {
 		if (this._chatState == state) { return }
@@ -236,20 +218,8 @@ Source.prototype = {
 	},
 
 	destroy: function () {
-		let proxy = this._client.proxy;
-		if (this._buddyStatusChangeId > 0) {
-			proxy.disconnectSignal(this._buddyStatusChangeId);
-			this._buddyStatusChangeId = 0;
-		}
-		if (this._buddySignedOnId > 0) {
-			proxy.disconnectSignal(this._buddySignedOnId);
-			this._buddySignedOnId = 0;
-		}
-		if (this._buddySignedOffId > 0) {
-			proxy.disconnectSignal(this._buddySignedOffId);
-			this._buddySignedOffId = 0;
-		}
-		this.parent();
+		//this.parent();
+		MessageTray.Source.prototype.destroy.call(this);
 	},
 
 	getIcon: function() {
@@ -271,6 +241,85 @@ Source.prototype = {
 
 	respond: function(text) {
 		this._client.proxy.PurpleConvImSendRemote(this._conv_im, GLib.markup_escape_text(text, -1));
+	},
+
+
+	notify: function() {
+		MessageTray.Source.prototype.notify.call(this, this._notification);
+		//this.parent(this._notification);
+	},
+
+	get count() {
+		return this._pendingMessages.length;
+	},
+
+	get indicatorCount() {
+		return this.count;
+	},
+	
+	get unseenCount() {
+		return this.count;
+	},
+
+	get countVisible() {
+		return this.count > 0;
+	}
+};
+
+function ImSource(client, account, author, conversation) {
+	this._init(client, account, author, conversation);
+} 
+ImSource.prototype = {
+	__proto__ : Source.prototype,
+
+	_init : function(client, account, author, conversation) {
+		let proxy = client.proxy;
+		this.isChat = false;
+		this._client = client;
+		this._buddy = proxy.PurpleFindBuddySync(account, author);
+		this._buddy_alias = _fixText(proxy.PurpleBuddyGetAliasSync(this._buddy));
+		this._buddy_presence = proxy.PurpleBuddyGetPresenceSync(this._buddy);
+		this._get_status_id();
+		this._title = this._buddy_alias;
+
+		this._buddy_icon = proxy.PurpleBuddyGetIconSync(this._buddy);
+		if (this._buddy_icon && this._buddy_icon != 0) {
+			this._buddy_icon_file = 'file://' + proxy.PurpleBuddyIconGetFullPathSync(this._buddy_icon);
+		} else {
+			this._buddy_icon_file = false;
+		}
+
+		Source.prototype._init.call(this, client, account, author, conversation);
+
+		this._buddyStatusChangeId = proxy.connectSignal('BuddyStatusChanged', Lang.bind(this, this._onBuddyStatusChange));
+		this._buddySignedOffId = proxy.connectSignal('BuddySignedOff', Lang.bind(this, this._onBuddySignedOff));
+		this._buddySignedOnId = proxy.connectSignal('BuddySignedOn', Lang.bind(this, this._onBuddySignedOn));
+	},
+
+	destroy: function() {
+		let proxy = this._client.proxy;
+		if (this._buddyStatusChangeId > 0) {
+			proxy.disconnectSignal(this._buddyStatusChangeId);
+			this._buddyStatusChangeId = 0;
+		}
+		if (this._buddySignedOnId > 0) {
+			proxy.disconnectSignal(this._buddySignedOnId);
+			this._buddySignedOnId = 0;
+		}
+		if (this._buddySignedOffId > 0) {
+			proxy.disconnectSignal(this._buddySignedOffId);
+			this._buddySignedOffId = 0;
+		}
+	},
+
+	_get_status_id: function() {
+		let proxy = this._client.proxy;
+		let buddy_status = proxy.PurplePresenceGetActiveStatusSync(this._buddy_presence);
+		this._status_id = getStatusCode(proxy.PurpleStatusGetIdSync(buddy_status));
+	},
+
+	_get_text: function(text, _ts, direction) {
+		return wrappedText(text, this._buddy_alias, _ts, direction);
 	},
 
 	_onBuddyStatusChange: function (emitter, something, params) {
@@ -296,29 +345,23 @@ Source.prototype = {
 		this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
 	},
 
-	notify: function() {
-		this.parent(this._notification);
-	},
+}
 
-	get count() {
-		return this._pendingMessages.length;
-	},
+function ChatSource(client, account, author, conversation) {
+	this._init(client, account, author, conversation);
+}
 
-	get indicatorCount() {
-		return this.count;
-	},
-	
-	get unseenCount() {
-		return this.count;
-	},
+ChatSource.prototype = {
+	__proto__: Source.prototype,
 
-	get countVisible() {
-		return this.count > 0;
-	},
-});
+	_init: function(client, account, author, conversation) {
+		this.isChat = true;
+		Source.prototype._init.call(this, client, account, author, conversation);
+	}
+}
 
 function PidginSearchProvider(client) {
-   this._init(client);
+	this._init(client);
 }
 
 PidginSearchProvider.prototype = {
@@ -453,7 +496,7 @@ PidginSearchProvider.prototype = {
 	createResultObject: function(resultMeta, terms) {
 		return null;
 	}
-});
+};
 
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
@@ -587,7 +630,7 @@ PidginClient.prototype = {
 		if (flag != 2 && flag != 1) { return; }
 		var source = this._sources[conversation];
 		if (!source) {
-			source = new Source(this, account, author, conversation);
+			source = new ImSource(this, account, author, conversation);
 			let pm = this._pending_messages[conversation];
 			if (pm) {
 				source._pendingMessages = pm;
@@ -618,3 +661,5 @@ PidginClient.prototype = {
 function init(metaObject) {
 	return new PidginClient();
 }
+
+// vim:noexpandtab:ts=3
