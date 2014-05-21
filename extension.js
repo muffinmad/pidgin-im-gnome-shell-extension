@@ -117,10 +117,15 @@ function getStatusIcon(s) {
 	}
 	return new Gio.ThemedIcon({name: iconName});
 }
-
-const Source = new Lang.Class({
-	Name: 'Source',
-	Extends: MessageTray.Source,
+/* 
+ * following gjs style: 
+ * https://wiki.gnome.org/Projects/GnomeShell/Gjs_StyleGuide
+ */
+function Source(client, account, author, conversation) {
+    this._init(client, account, author, conversation);
+}
+Source.prototype = {
+    __proto__: MessageTray.Source.prototype,
 
 	_init: function(client, account, author, conversation) {
 		let proxy = client.proxy;
@@ -312,8 +317,11 @@ const Source = new Lang.Class({
 	},
 });
 
-const PidginSearchProvider = new Lang.Class({
-	Name: 'PidginSearchProvider',
+function PidginSearchProvider(client) {
+   this._init(client);
+}
+
+PidginSearchProvider.prototype = {
 
 	_init: function(client) {
 		this.id = 'pidgin';
