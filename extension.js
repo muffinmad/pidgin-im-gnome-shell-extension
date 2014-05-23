@@ -129,9 +129,6 @@ Source.prototype = {
 
 	_init: function(client, account, author, conversation) {
 		let proxy = client.proxy;
-		if (account == null) {
-			account = proxy.PurpleConversationGetAccountSync(conversation);
-		}
 		this._account = account;
 		this._chatState = 0;
 		this._client = client;
@@ -141,7 +138,6 @@ Source.prototype = {
 		this._conv_gc = proxy.PurpleConversationGetGcSync(this._conversation);
 		this.title = _fixText(proxy.PurpleConversationGetTitleSync(this._conversation).toString());
 
-		//this.parent(this._title);
 		MessageTray.Source.prototype._init.call(this, this.title);
 
 		this._pendingMessages = [];
@@ -195,12 +191,10 @@ Source.prototype = {
 		}
 	},
 
-	/*
 	buildRightClickMenu: function() {
-		// notifications doesn't work after popup showed. disable menu for now
+		// notifications doesn't work after popup. disable menu for now
 		return null;
 	},
-	*/
 
 	setChatState: function(state) {
 		if (this._chatState == state) { return }
@@ -218,7 +212,6 @@ Source.prototype = {
 	},
 
 	destroy: function () {
-		//this.parent();
 		MessageTray.Source.prototype.destroy.call(this);
 	},
 
@@ -251,7 +244,6 @@ Source.prototype = {
 
 	notify: function() {
 		MessageTray.Source.prototype.notify.call(this, this._notification);
-		//this.parent(this._notification);
 	},
 
 	get count() {
@@ -315,6 +307,7 @@ ImSource.prototype = {
 			proxy.disconnectSignal(this._buddySignedOffId);
 			this._buddySignedOffId = 0;
 		}
+		Source.prototype.destroy.call(this);
 	},
 
 	_get_status_id: function() {
@@ -355,7 +348,6 @@ ImSource.prototype = {
 function ChatSource(client, account, author, conversation) {
 	this._init(client, account, author, conversation);
 }
-
 ChatSource.prototype = {
 	__proto__: Source.prototype,
 
@@ -408,7 +400,6 @@ ChatSource.prototype = {
 function PidginSearchProvider(client) {
 	this._init(client);
 }
-
 PidginSearchProvider.prototype = {
 
 	_init: function(client) {
@@ -548,7 +539,6 @@ const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 function PidginClient() {
 	this._init();
 }
-
 PidginClient.prototype = {
 	_init: function() {
 		this._sources = {};
@@ -588,11 +578,13 @@ PidginClient.prototype = {
 			if (!conv || conv == null) { continue }
 			let messages = this._proxy.PurpleConversationGetMessageHistorySync(conv).toString().split(',');
 			let history = [];
+			let account = this._proxy.PurpleConversationGetAccountSync(conv);
 			for (let x in messages) {
 				let mess = messages[x];
 				if (!mess || mess == null) { continue }
 				history.push({
 					conv: conv,
+					account: account,
 					author: this._proxy.PurpleConversationMessageGetSenderSync(mess).toString(),
 					text: this._proxy.PurpleConversationMessageGetMessageSync(mess),
 					flag: this._proxy.PurpleConversationMessageGetFlagsSync(mess),
@@ -603,7 +595,7 @@ PidginClient.prototype = {
 			history = history.sort(function(m1, m2) { return m1.timestamp - m2.timestamp });
 			for (let x in history) {
 				let h = history[x];
-				this._handleMessage(null, h.author, h.text, h.conv, h.flag, h.timestamp);
+				this._handleMessage(h.account, h.author, h.text, h.conv, h.flag, h.timestamp, false);
 			}
 		}
 
@@ -643,6 +635,7 @@ PidginClient.prototype = {
 				src.destroy();
 			}
 		}
+
 		if (this._enableSearchProviderChangeId > 0) {
 			this._settings.disconnect(this._enableSearchProviderChangeId);
 		}
@@ -719,4 +712,4 @@ function init(metaObject) {
 	return new PidginClient();
 }
 
-// vim:noexpandtab:ts=3
+// vim:noexpandtab:ts=4
