@@ -28,6 +28,10 @@ const Clutter = imports.gi.Clutter;
 const Convenience = Me.imports.convenience;
 
 
+function log(text) {
+	global.log('pidgin-im-gs: ' + text);
+}
+
 function wrappedText(text, sender, timestamp, direction) {
 	text = _fixText(text);
 
@@ -146,6 +150,7 @@ Source.prototype = {
 		this._notification.setUrgency(MessageTray.Urgency.HIGH);
 
 		this._notification.connect('expanded', Lang.bind(this, this._notificationExpanded));
+		this._notification.connect('clicked', Lang.bind(this, this.open));
 
 		Main.messageTray.add(this);
 		this.pushNotification(this._notification);
