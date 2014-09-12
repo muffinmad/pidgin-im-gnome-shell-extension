@@ -3,7 +3,7 @@ pidgin-im-gnome-shell-extension
 
 Make Pidgin IM conversations appear in the Gnome Shell message tray
 
-Supports only IMs for now (i.e. no chats, file transfers or attentions).
+Supports only Chats and IMs for now (i.e. no file transfers or attentions).
 
 Issues:
 - Messages appear unseen in Pidgin after expanding notification in message tray. Don't know how to set unseen state in Pidgin
@@ -19,4 +19,3 @@ Features:
 - Search provider for buddys from connected accounts (can be disabled from extension preferences)
 
 Tested on Gnome Shell 3.10, 3.12 and Pidgin 2.10.9 with Jabber protocol.
-
