@@ -173,7 +173,7 @@ Source.prototype = {
 		let direction = null;
 		if (flag == 1) {
 			direction = TelepathyClient.NotificationDirection.SENT;
-		} else if (flag == 2) {
+		} else if (flag == 2 || flag == 34) {
 			direction = TelepathyClient.NotificationDirection.RECEIVED;
 		} else {
 			return;
@@ -189,7 +189,9 @@ Source.prototype = {
 			if ((!focus || focus == 0) && (_ts >= this._client.disable_timestamp && (this._client.disable_timestamp > 0 || timestamp == null))) {
 				this._pendingMessages.push(message);
 				this.countUpdated();
-				this.notify();
+				if (!this._isChat || flag == 34) {
+					this.notify();
+				}
 			}
 		} else {
 			this._markAllSeen();
@@ -679,7 +681,7 @@ PidginClient.prototype = {
 	},
 
 	_handleMessage: function(account, author, message, conversation, flag, timestamp, isChat) {
-		if (flag != 2 && flag != 1) { return; }
+		if (flag != 2 && flag != 1 && flag != 34) { return; }
 		var source = this._sources[conversation];
 		if (!source) {
 			if(isChat)
