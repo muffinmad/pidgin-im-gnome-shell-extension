@@ -464,7 +464,7 @@ PidginSearchProvider.prototype = {
 	getResultMeta: function(result) {
 		return {
 			id: result.buddy,
-			name: result.alias,
+			name: result.alias + "\nvia " + result.account_name,
 			createIcon: Lang.bind(this, function(iconSize) {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
 			})
@@ -491,8 +491,13 @@ PidginSearchProvider.prototype = {
 	_filterBuddys: function(buddys, terms) {
 		return buddys.filter(function(b) {
 			let s = b.alias.toLowerCase();
+			let a = b.account_name[0].toLowerCase();
+			let h = b.handle[0].toLowerCase();
 			for (let t in terms) {
-				if (s.indexOf(terms[t].toLowerCase()) == -1) {
+				if ((s.indexOf(terms[t].toLowerCase()) == -1)
+					&& (a.indexOf(terms[t].toLowerCase()) == -1)
+					&& (h.indexOf(terms[t].toLowerCase()) == -1)
+			       ) {
 					return false;
 				}
 			}
@@ -506,11 +511,14 @@ PidginSearchProvider.prototype = {
 		let buddys = [];
 		for (let i in _accounts) {
 			let acc = _accounts[i];
+			let acc_name = p.PurpleAccountGetNameForDisplaySync(acc);
 			let b = p.PurpleFindBuddiesSync(acc, '').toString().split(',');
 			for (let x in b) {
 				let buddy = b[x];
 				buddys.push({
 					buddy: buddy,
+					account_name: acc_name,
+					handle: p.PurpleBuddyGetNameSync(buddy),
 					alias: p.PurpleBuddyGetAliasSync(buddy).toString(),
 					status_code: getStatusCode(p.PurpleStatusGetIdSync(p.PurplePresenceGetActiveStatusSync(p.PurpleBuddyGetPresenceSync(buddy))))
 				});
