@@ -490,8 +490,11 @@ PidginSearchProvider.prototype = {
 	_filterBuddys: function(buddys, terms) {
 		return buddys.filter(function(b) {
 			let s = b.alias.toLowerCase();
+			let a = b.account_name[0].toLowerCase();
 			for (let t in terms) {
-				if (s.indexOf(terms[t].toLowerCase()) == -1) {
+				if ((s.indexOf(terms[t].toLowerCase()) == -1)
+					&& (a.indexOf(terms[t].toLowerCase()) == -1)
+			       ) {
 					return false;
 				}
 			}
