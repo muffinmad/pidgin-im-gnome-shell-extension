@@ -491,9 +491,11 @@ PidginSearchProvider.prototype = {
 		return buddys.filter(function(b) {
 			let s = b.alias.toLowerCase();
 			let a = b.account_name[0].toLowerCase();
+			let h = b.handle[0].toLowerCase();
 			for (let t in terms) {
 				if ((s.indexOf(terms[t].toLowerCase()) == -1)
 					&& (a.indexOf(terms[t].toLowerCase()) == -1)
+					&& (h.indexOf(terms[t].toLowerCase()) == -1)
 			       ) {
 					return false;
 				}
@@ -515,6 +517,7 @@ PidginSearchProvider.prototype = {
 				buddys.push({
 					buddy: buddy,
 					account_name: acc_name,
+					handle: p.PurpleBuddyGetNameSync(buddy),
 					alias: p.PurpleBuddyGetAliasSync(buddy).toString(),
 					status_code: getStatusCode(p.PurpleStatusGetIdSync(p.PurplePresenceGetActiveStatusSync(p.PurpleBuddyGetPresenceSync(buddy))))
 				});
