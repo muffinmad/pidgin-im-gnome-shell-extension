@@ -14,7 +14,9 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-const Me = imports.misc.extensionUtils.getCurrentExtension();
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+const Config = imports.misc.config;
 const DBusIface = Me.imports.dbus;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
@@ -122,15 +124,15 @@ function getStatusIcon(s) {
 	}
 	return new Gio.ThemedIcon({name: iconName});
 }
-/* 
- * following gjs style: 
+/*
+ * following gjs style:
  * https://wiki.gnome.org/Projects/GnomeShell/Gjs_StyleGuide
  */
 function Source(client, account, author, conversation) {
-	 this._init(client, account, author, conversation);
+	this._init(client, account, author, conversation);
 }
 Source.prototype = {
-	 __proto__: MessageTray.Source.prototype,
+	__proto__: MessageTray.Source.prototype,
 
 	_init: function(client, account, author, conversation) {
 		let proxy = client.proxy;
@@ -151,7 +153,9 @@ Source.prototype = {
 		this._notification.setUrgency(MessageTray.Urgency.HIGH);
 
 		this._notification.connect('expanded', Lang.bind(this, this._notificationExpanded));
-		this._notification.connect('clicked', Lang.bind(this, this.open));
+		if (!ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
+			this._notification.connect('clicked', Lang.bind(this, this.open));
+		}
 
 		Main.messageTray.add(this);
 		this.pushNotification(this._notification);
@@ -261,7 +265,7 @@ Source.prototype = {
 	get indicatorCount() {
 		return this.count;
 	},
-	
+
 	get unseenCount() {
 		return this.count;
 	},
@@ -273,7 +277,7 @@ Source.prototype = {
 
 function ImSource(client, account, author, conversation) {
 	this._init(client, account, author, conversation);
-} 
+}
 ImSource.prototype = {
 	__proto__ : Source.prototype,
 
@@ -405,10 +409,11 @@ ChatSource.prototype = {
 	},
 }
 
-function PidginSearchProvider(client) {
+
+function PidginSearchProviderBase(client) {
 	this._init(client);
 }
-PidginSearchProvider.prototype = {
+PidginSearchProviderBase.prototype = {
 
 	_init: function(client) {
 		this.id = 'pidgin';
@@ -419,8 +424,9 @@ PidginSearchProvider.prototype = {
 	enable: function() {
 		if (!this._enabled) {
 			try {
-				Main.overview.addSearchProvider(this);
+				this._enable();
 			} catch (e) {
+				log(e);
 			}
 			this._enabled = true;
 		}
@@ -429,8 +435,9 @@ PidginSearchProvider.prototype = {
 	disable: function() {
 		if (this._enabled) {
 			try {
-				Main.overview.removeSearchProvider(this);
+				this._disable();
 			} catch (e) {
+				log(e);
 			}
 			this._enabled = false;
 		}
@@ -477,15 +484,15 @@ PidginSearchProvider.prototype = {
 	},
 
 	filterResults: function(results, maxResults) {
-		res = results.sort(function(b1, b2) {
-			result = b2.status_code - b1.status_code;
+		let res = results.sort(function(b1, b2) {
+			let result = b2.status_code - b1.status_code;
 			if (result == 0) {
 				return b1.alias.toLowerCase().localeCompare(b2.alias.toLowerCase());
 			}
 			return result;
 		});
-	
-		return results.slice(0, maxResults);
+
+		return res.slice(0, maxResults);
 	},
 
 	_filterBuddys: function(buddys, terms) {
@@ -496,8 +503,8 @@ PidginSearchProvider.prototype = {
 			for (let t in terms) {
 				if ((s.indexOf(terms[t].toLowerCase()) == -1)
 					&& (a.indexOf(terms[t].toLowerCase()) == -1)
-					&& (h.indexOf(terms[t].toLowerCase()) == -1)
-			       ) {
+					&& (h.indexOf(terms[t].toLowerCase()) == -1))
+				{
 					return false;
 				}
 			}
@@ -505,7 +512,7 @@ PidginSearchProvider.prototype = {
 		});
 	},
 
-	_got_accounts: function(accounts) {
+	_getBuddys: function(accounts) {
 		let p = this._client.proxy;
 		let _accounts = accounts.toString().split(',')
 		let buddys = [];
@@ -520,11 +527,43 @@ PidginSearchProvider.prototype = {
 					account_name: acc_name,
 					handle: p.PurpleBuddyGetNameSync(buddy),
 					alias: p.PurpleBuddyGetAliasSync(buddy).toString(),
-					status_code: getStatusCode(p.PurpleStatusGetIdSync(p.PurplePresenceGetActiveStatusSync(p.PurpleBuddyGetPresenceSync(buddy))))
+					status_code: getStatusCode(p.PurpleStatusGetIdSync(p.PurplePresenceGetActiveStatusSync(p.PurpleBuddyGetPresenceSync(buddy)))),
+					toString: function() {
+						return buddy;
+					}
 				});
 			}
 		}
-		this.searchSystem.setResults(this, this._filterBuddys(buddys, this._terms));
+		return buddys;
+	},
+
+	activateResult: function(result) {
+		let p = this._client.proxy;
+		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
+			1,
+			p.PurpleBuddyGetAccountSync(result),
+			p.PurpleBuddyGetNameSync(result).toString()
+		));
+	}
+};
+
+
+function PidginSearchProvider(client) {
+	this._init(client);
+}
+PidginSearchProvider.prototype = {
+	__proto__: PidginSearchProviderBase.prototype,
+
+	_enable: function() {
+		Main.overview.addSearchProvider(this);
+	},
+
+	disable: function() {
+		Main.overview.removeSearchProvider(this);
+	},
+
+	_got_accounts: function(accounts) {
+		this.searchSystem.setResults(this, this._filterBuddys(this._getBuddys(accounts), this._terms));
 	},
 
 	getInitialResultSet: function(terms) {
@@ -536,19 +575,44 @@ PidginSearchProvider.prototype = {
 		this.searchSystem.setResults(this, this._filterBuddys(previousResults, terms));
 	},
 
-	activateResult: function(result) {
-		let p = this._client.proxy;
-		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
-			1,
-			p.PurpleBuddyGetAccountSync(result),
-			p.PurpleBuddyGetNameSync(result).toString()
-		));
-	},
-
 	createResultObject: function(resultMeta, terms) {
 		return null;
 	}
-};
+}
+
+
+function PidginSearchProvider312(client) {
+	this._init(client);
+}
+PidginSearchProvider312.prototype = {
+
+	__proto__: PidginSearchProviderBase.prototype,
+
+	enable: function() {
+		Main.overview.viewSelector._searchResults._searchSystem.addProvider(this);
+	},
+
+	disable: function() {
+		let ss = Main.overview.viewSelector._searchResults._searchSystem;
+		let index = ss._providers.indexOf(this);
+		ss._providers.splice(index, 1);
+		ss.emit('providers-changed');
+	},
+
+	getInitialResultSet: function(terms, callback, cancellable) {
+		let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
+		callback(this._filterBuddys(this._getBuddys(accounts), terms));
+	},
+
+	getSubsearchResultSet: function(previousResults, terms, callback, cancellable) {
+		callback(this._filterBuddys(previousResults, terms));
+	},
+
+	createResultObject: function(resultMeta) {
+		return null;
+	}
+}
+
 
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
@@ -575,7 +639,11 @@ PidginClient.prototype = {
 	_enableSearchProviderChanged: function() {
 		if (this._settings.get_boolean('enable-search-provider')) {
 			if (this._searchProvider == null) {
-				this._searchProvider = new PidginSearchProvider(this);
+				if (ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
+					this._searchProvider = new PidginSearchProvider(this);
+				} else {
+					this._searchProvider = new PidginSearchProvider312(this);
+				}
 			}
 			this._searchProvider.enable();
 		} else {
@@ -619,9 +687,9 @@ PidginClient.prototype = {
 				Lang.bind(this, this._messageDisplayed, false));
 		this._displayedChatMsgId = this._proxy.connectSignal('DisplayedChatMsg',
 				Lang.bind(this, this._messageDisplayed, true));
-		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation', 
+		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation',
 				Lang.bind(this, this._onDeleteConversation));
-		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated', 
+		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated',
 				Lang.bind(this, this._onConversationUpdated));
 	},
 
@@ -643,7 +711,7 @@ PidginClient.prototype = {
 			this._proxy.disconnectSignal(this._conversationUpdatedId);
 			this._conversationUpdatedId = 0;
 		}
-		
+
 		for (let key in this._sources) {
 			if (this._sources.hasOwnProperty(key)) {
 				let src = this._sources[key];
@@ -719,7 +787,7 @@ PidginClient.prototype = {
 		var message = details[2];
 		var conversation = details[3];
 		var flag = details[4];
-		
+
 		this._handleMessage(account, author, message, conversation, flag, null, isChat);
 	},
 }
