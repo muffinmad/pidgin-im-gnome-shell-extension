@@ -172,9 +172,9 @@ Source.prototype = {
 
 	handleMessage: function(author, text, flag, timestamp) {
 		let direction = null;
-		if (flag == 1) {
+		if (flag & 1) {
 			direction = TelepathyClient.NotificationDirection.SENT;
-		} else if (flag == 2 || flag == 34) {
+		} else if (flag & 2) {
 			direction = TelepathyClient.NotificationDirection.RECEIVED;
 		} else {
 			return;
@@ -690,7 +690,9 @@ PidginClient.prototype = {
 	},
 
 	_handleMessage: function(account, author, message, conversation, flag, timestamp, isChat) {
-		if (flag != 2 && flag != 1 && flag != 34) { return; }
+	    if (flag & 0x200) flag |= 2; // treat error message as received message
+		//if (flag != 2 && flag != 1 && flag != 34) { return; }
+		if (flag & 3 == 0) {return;} // nor send or receive message
 		var source = this._sources[conversation];
 		if (!source) {
 			if(isChat)
