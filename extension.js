@@ -204,8 +204,28 @@ Source.prototype = {
 	},
 
 	buildRightClickMenu: function() {
-		// notifications doesn't work after popup. disable menu for now
-		return null;
+		let menu = MessageTray.Source.prototype.buildRightClickMenu.call(this);
+
+		let item = new PopupMenu.PopupMenuItem('');
+		item.actor.connect('notify::mapped', Lang.bind(this, function() {
+			item.label.set_text(this.isMuted ? _("Unmute") : _("Mute"));
+		}));
+		item.connect('activate', Lang.bind(this, function() {
+			this.setMuted(!this.isMuted);
+			this.emit('done-displaying-content', false);
+		}));
+
+		menu.add(item.actor);
+
+		return menu;
+	},
+
+	setMuted: function(muted) {
+		if (this.isMuted == muted) {
+			return;
+		}
+		this.isMuted = muted;
+		this.emit('muted-changed');
 	},
 
 	setChatState: function(state) {
