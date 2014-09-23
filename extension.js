@@ -588,7 +588,11 @@ PidginSearchProvider.prototype = {
 
 	getInitialResultSet: function(terms) {
 		this._terms = terms;
-		this._client.proxy.PurpleAccountsGetAllActiveRemote(Lang.bind(this, this._got_accounts));
+		try {
+			this._client.proxy.PurpleAccountsGetAllActiveRemote(Lang.bind(this, this._got_accounts));
+		} catch (e) {
+			log(e);
+		}
 	},
 
 	getSubsearchResultSet: function(previousResults, terms) {
@@ -620,8 +624,12 @@ PidginSearchProvider312.prototype = {
 	},
 
 	getInitialResultSet: function(terms, callback, cancellable) {
-		let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
-		callback(this._filterBuddys(this._getBuddys(accounts), terms));
+		try {
+			let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
+			callback(this._filterBuddys(this._getBuddys(accounts), terms));
+		} catch (e) {
+			log(e);
+		}
 	},
 
 	getSubsearchResultSet: function(previousResults, terms, callback, cancellable) {
@@ -686,39 +694,36 @@ PidginClient.prototype = {
 				Lang.bind(this, this._onConversationUpdated));
 
 		// existing conversations
-		let conversations = null;
-		try{
-		   conversations = this._proxy.PurpleGetImsSync().toString().split(',');
-		}catch(e){
-		   log(e);
-		}
-		if(conversations == null) return;
-		for (let i in conversations) {
-			let conv = conversations[i];
-			if (!conv || conv == null) { continue }
-			let messages = this._proxy.PurpleConversationGetMessageHistorySync(conv).toString().split(',');
-			let history = [];
-			let account = this._proxy.PurpleConversationGetAccountSync(conv);
-			for (let x in messages) {
-				let mess = messages[x];
-				if (!mess || mess == null) { continue }
-				history.push({
-					conv: conv,
-					account: account,
-					author: this._proxy.PurpleConversationMessageGetSenderSync(mess).toString(),
-					text: this._proxy.PurpleConversationMessageGetMessageSync(mess),
-					flag: this._proxy.PurpleConversationMessageGetFlagsSync(mess),
-					timestamp: this._proxy.PurpleConversationMessageGetTimestampSync(mess)
-				});
+		try {
+			conversations = this._proxy.PurpleGetImsSync().toString().split(',');
+			for (let i in conversations) {
+				let conv = conversations[i];
+				if (!conv || conv == null) { continue }
+				let messages = this._proxy.PurpleConversationGetMessageHistorySync(conv).toString().split(',');
+				let history = [];
+				let account = this._proxy.PurpleConversationGetAccountSync(conv);
+				for (let x in messages) {
+					let mess = messages[x];
+					if (!mess || mess == null) { continue }
+					history.push({
+						conv: conv,
+						account: account,
+						author: this._proxy.PurpleConversationMessageGetSenderSync(mess).toString(),
+						text: this._proxy.PurpleConversationMessageGetMessageSync(mess),
+						flag: this._proxy.PurpleConversationMessageGetFlagsSync(mess),
+						timestamp: this._proxy.PurpleConversationMessageGetTimestampSync(mess)
+					});
+				}
+				if (history.length == 0) { continue }
+				history = history.sort(function(m1, m2) { return m1.timestamp - m2.timestamp });
+				for (let x in history) {
+					let h = history[x];
+					this._handleMessage(h.account, h.author, h.text, h.conv, h.flag, h.timestamp, false);
+				}
 			}
-			if (history.length == 0) { continue }
-			history = history.sort(function(m1, m2) { return m1.timestamp - m2.timestamp });
-			for (let x in history) {
-				let h = history[x];
-				this._handleMessage(h.account, h.author, h.text, h.conv, h.flag, h.timestamp, false);
-			}
+		} catch (e) {
+			log(e);
 		}
-
 	},
 
 	disable: function() {
