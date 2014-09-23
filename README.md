@@ -5,7 +5,6 @@ Make Pidgin IM conversations appear in the Gnome Shell message tray
 ###Issues
 - Messages appear unseen in Pidgin after expanding notification in message tray. Don't know how to set unseen state in Pidgin
 - No notifications on locked screen even if notification settings allow it. Because Gnome Shell disables all extensions on screen lock
-- Can't connect to Pidgin DBus events if Pidgin is not running. Restart Gnome Shell after launching Pidgin
 - No notifications for conversation after right-click on conversation in the message tray. Left-click on conversation icon in the message tray to fix.
 
 ###Features
