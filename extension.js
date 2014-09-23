@@ -675,8 +675,24 @@ PidginClient.prototype = {
 
 	enable: function() {
 		this._enableSearchProviderChanged();
+
+		this._displayedImMsgId = this._proxy.connectSignal('DisplayedImMsg',
+				Lang.bind(this, this._messageDisplayed, false));
+		this._displayedChatMsgId = this._proxy.connectSignal('DisplayedChatMsg',
+				Lang.bind(this, this._messageDisplayed, true));
+		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation',
+				Lang.bind(this, this._onDeleteConversation));
+		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated',
+				Lang.bind(this, this._onConversationUpdated));
+
 		// existing conversations
-		let conversations = this._proxy.PurpleGetImsSync().toString().split(',');
+		let conversations = null;
+		try{
+		   conversations = this._proxy.PurpleGetImsSync().toString().split(',');
+		}catch(e){
+		   log(e);
+		}
+		if(conversations == null) return;
 		for (let i in conversations) {
 			let conv = conversations[i];
 			if (!conv || conv == null) { continue }
@@ -703,14 +719,6 @@ PidginClient.prototype = {
 			}
 		}
 
-		this._displayedImMsgId = this._proxy.connectSignal('DisplayedImMsg',
-				Lang.bind(this, this._messageDisplayed, false));
-		this._displayedChatMsgId = this._proxy.connectSignal('DisplayedChatMsg',
-				Lang.bind(this, this._messageDisplayed, true));
-		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation',
-				Lang.bind(this, this._onDeleteConversation));
-		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated',
-				Lang.bind(this, this._onConversationUpdated));
 	},
 
 	disable: function() {
