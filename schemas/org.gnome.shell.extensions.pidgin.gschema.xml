@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gnome-shell-extensions-pidgin">
+	<schema path="/org/gnome/shell/extensions/pidgin/" id="org.gnome.shell.extensions.pidgin">
+		<key type="b" name="enable-search-provider">
+			<default>true</default>
+			<summary>Enable search provider</summary>
+			<description>Whether to show buddies matching search terms in Overview</description>
+		</key>
+	</schema>
+</schemalist>
