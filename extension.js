@@ -30,7 +30,6 @@ const St = imports.gi.St;
 const Clutter = imports.gi.Clutter;
 const Convenience = Me.imports.convenience;
 
-
 function log(text) {
 	global.log('pidgin-im-gs: ' + text);
 }
@@ -578,7 +577,7 @@ PidginSearchProvider.prototype = {
 		Main.overview.addSearchProvider(this);
 	},
 
-	disable: function() {
+	_disable: function() {
 		Main.overview.removeSearchProvider(this);
 	},
 
@@ -612,11 +611,11 @@ PidginSearchProvider312.prototype = {
 
 	__proto__: PidginSearchProviderBase.prototype,
 
-	enable: function() {
+	_enable: function() {
 		Main.overview.viewSelector._searchResults._searchSystem.addProvider(this);
 	},
 
-	disable: function() {
+	_disable: function() {
 		let ss = Main.overview.viewSelector._searchResults._searchSystem;
 		let index = ss._providers.indexOf(this);
 		ss._providers.splice(index, 1);
@@ -657,32 +656,43 @@ PidginClient.prototype = {
 		this._setUnavailable = 0;
 		this._disable_timestamp = 0;
 		this._searchProvider = null;
+		this._messageTrayIntegration = false;
 		this._settings = Convenience.getSettings();
-		this._enableSearchProviderChangeId =
-			this._settings.connect(
-				'changed::enable-search-provider',
-				Lang.bind(this, this._enableSearchProviderChanged));
+	},
+
+	_enableMessageTrayChanged: function() {
+		if (this._settings.get_boolean('enable-message-tray')) {
+			this.enableMessageTrayIntegration();
+		} else {
+			this.disableMessageTrayIntegration();
+		}
 	},
 
 	_enableSearchProviderChanged: function() {
 		if (this._settings.get_boolean('enable-search-provider')) {
-			if (this._searchProvider == null) {
-				if (ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
-					this._searchProvider = new PidginSearchProvider(this);
-				} else {
-					this._searchProvider = new PidginSearchProvider312(this);
-				}
-			}
-			this._searchProvider.enable();
+			this.enableSearchProvider();
 		} else {
-			if (this._searchProvider != null) {
-				this._searchProvider.disable();
-			}
+			this.disableSearchProvider();
 		}
 	},
 
 	enable: function() {
+		this._enableMessageTrayChangeId =
+			this._settings.connect(
+				'changed::enable-message-tray',
+				Lang.bind(this, this._enableMessageTrayChanged));
+		this._enableSearchProviderChangeId =
+			this._settings.connect(
+				'changed::enable-search-provider',
+				Lang.bind(this, this._enableSearchProviderChanged));
 		this._enableSearchProviderChanged();
+		this._enableMessageTrayChanged();
+	},
+
+	enableMessageTrayIntegration: function() {
+		if (this._messageTrayIntegration) {
+			return;
+		}
 
 		this._displayedImMsgId = this._proxy.connectSignal('DisplayedImMsg',
 				Lang.bind(this, this._messageDisplayed, false));
@@ -724,9 +734,37 @@ PidginClient.prototype = {
 		} catch (e) {
 			log(e);
 		}
+		this._messageTrayIntegration = true;
+	},
+
+	enableSearchProvider: function() {
+		if (this._searchProvider == null) {
+			if (ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
+				this._searchProvider = new PidginSearchProvider(this);
+			} else {
+				this._searchProvider = new PidginSearchProvider312(this);
+			}
+			this._searchProvider.enable();
+		}
 	},
 
 	disable: function() {
+		this.disableMessageTrayIntegration();
+		this.disableSearchProvider();
+
+		if (this._enableSearchProviderChangeId > 0) {
+			this._settings.disconnect(this._enableSearchProviderChangeId);
+		}
+		if (this._enableMessageTrayChangeId > 0) {
+			this._settings.disconnect(this._enableMessageTrayChangeId);
+		}
+	},
+
+	disableMessageTrayIntegration: function() {
+		if (! this._messageTrayIntegration) {
+			return;
+		}
+
 		this._disable_timestamp = Date.now() / 1000;
 		if (this._displayedImMsgId > 0) {
 			this._proxy.disconnectSignal(this._displayedImMsgId);
@@ -752,12 +790,13 @@ PidginClient.prototype = {
 				src.destroy();
 			}
 		}
+		this._messageTrayIntegration = false;
+	},
 
-		if (this._enableSearchProviderChangeId > 0) {
-			this._settings.disconnect(this._enableSearchProviderChangeId);
-		}
+	disableSearchProvider: function() {
 		if (this._searchProvider != null) {
 			this._searchProvider.disable();
+			this._searchProvider = null;
 		}
 	},
 
