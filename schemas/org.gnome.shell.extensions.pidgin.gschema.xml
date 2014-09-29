@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="gnome-shell-extensions-pidgin">
 	<schema path="/org/gnome/shell/extensions/pidgin/" id="org.gnome.shell.extensions.pidgin">
+	        <key type="b" name="enable-message-tray">
+		        <default>true</default>
+			<summary>Message tray integration</summary>
+			<description>Set to true to integrate with the message tray</description>
+		</key>
 		<key type="b" name="enable-search-provider">
 			<default>true</default>
 			<summary>Enable search provider</summary>
