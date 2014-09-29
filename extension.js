@@ -30,8 +30,6 @@ const St = imports.gi.St;
 const Clutter = imports.gi.Clutter;
 const Convenience = Me.imports.convenience;
 
-var pidginClient = null;
-
 function log(text) {
 	global.log('pidgin-im-gs: ' + text);
 }
@@ -613,11 +611,11 @@ PidginSearchProvider312.prototype = {
 
 	__proto__: PidginSearchProviderBase.prototype,
 
-	enable: function() {
+	_enable: function() {
 		Main.overview.viewSelector._searchResults._searchSystem.addProvider(this);
 	},
 
-	disable: function() {
+	_disable: function() {
 		let ss = Main.overview.viewSelector._searchResults._searchSystem;
 		let index = ss._providers.indexOf(this);
 		ss._providers.splice(index, 1);
@@ -868,21 +866,7 @@ PidginClient.prototype = {
 }
 
 function init(metaObject) {
+	return new PidginClient();
 }
-
-function enable() {
-    if (! pidginClient) {
-        pidginClient = new PidginClient();
-		pidginClient.enable();
-    }
-}
-
-function disable() {
-    if (pidginClient) {
-		pidginClient.disable();
-		pidginClient = null;
-	}
-}
-
 
 // vim:noexpandtab:ts=4

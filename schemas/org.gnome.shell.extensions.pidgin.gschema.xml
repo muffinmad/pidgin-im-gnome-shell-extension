@@ -4,7 +4,7 @@
 	        <key type="b" name="enable-message-tray">
 		        <default>true</default>
 			<summary>Message tray integration</summary>
-			<description>Set to true to integrate with the message tray</description>
+			<description>Integrate with the message tray</description>
 		</key>
 		<key type="b" name="enable-search-provider">
 			<default>true</default>
