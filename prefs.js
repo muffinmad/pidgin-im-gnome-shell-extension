@@ -1,4 +1,4 @@
-// -*- mode: js2; indent-tabs-mode: nil; js2-basic-offset: 4 -*-
+// -*- mode: js2; indent-tabs-mode: nil; js2-basic-offset: 8 -*-
 
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
@@ -27,21 +27,37 @@ const PidginPrefsWidget = new GObject.Class({
 
 		this.margin = 24;
 		this.spacing = 30;
-		let label = new Gtk.Label({
+                let msg_label = new Gtk.Label({
+			label: _('Message tray integration'),
+			hexpand: true,
+			halign: Gtk.Align.START});
+		let msg_checkbox = new Gtk.Switch({
+			halign: Gtk.Align.END});
+	        msg_checkbox.set_active(this._settings.get_boolean('enable-message-tray'));
+		msg_checkbox.connect(
+			'notify::active',
+			Lang.bind(this, function(check) {
+				this._settings.set_boolean('enable-message-tray', check.get_active());
+			})
+		);
+		this.add(msg_label);
+		this.add(msg_checkbox);
+
+	        let buddy_label = new Gtk.Label({
 			label: _('Buddies search provider'),
 			hexpand: true,
 			halign: Gtk.Align.START});
-		let checkbox = new Gtk.Switch({
+		let buddy_checkbox = new Gtk.Switch({
 			halign: Gtk.Align.END});
-		checkbox.set_active(this._settings.get_boolean('enable-search-provider'));
-		checkbox.connect(
+		buddy_checkbox.set_active(this._settings.get_boolean('enable-search-provider'));
+		buddy_checkbox.connect(
 			'notify::active',
 			Lang.bind(this, function(check) {
 				this._settings.set_boolean('enable-search-provider', check.get_active());
 			})
 		);
-		this.add(label);
-		this.add(checkbox);
+		this.add(buddy_label);
+		this.add(buddy_checkbox);
 	},
 });
 
