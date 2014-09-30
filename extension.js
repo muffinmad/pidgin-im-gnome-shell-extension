@@ -744,8 +744,8 @@ PidginClient.prototype = {
 			} else {
 				this._searchProvider = new PidginSearchProvider312(this);
 			}
-			this._searchProvider.enable();
 		}
+		this._searchProvider.enable();
 	},
 
 	disable: function() {
@@ -796,7 +796,6 @@ PidginClient.prototype = {
 	disableSearchProvider: function() {
 		if (this._searchProvider != null) {
 			this._searchProvider.disable();
-			this._searchProvider = null;
 		}
 	},
 
