@@ -641,6 +641,24 @@ PidginSearchProvider312.prototype = {
 }
 
 
+function PidginSearchProvider314(client) {
+	this._init(client);
+}
+PidginSearchProvider314.prototype = {
+
+	__proto__: PidginSearchProvider312.prototype,
+
+	_enable: function() {
+		Main.overview.viewSelector._searchResults._registerProvider(this);
+	},
+
+	_disable: function() {
+		Main.overview.viewSelector._searchResults._unregisterProvider(this);
+		this.display = null;
+	}
+}
+
+
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
 function PidginClient() {
@@ -705,7 +723,7 @@ PidginClient.prototype = {
 
 		// existing conversations
 		try {
-			conversations = this._proxy.PurpleGetImsSync().toString().split(',');
+			let conversations = this._proxy.PurpleGetImsSync().toString().split(',');
 			for (let i in conversations) {
 				let conv = conversations[i];
 				if (!conv || conv == null) { continue }
@@ -741,8 +759,10 @@ PidginClient.prototype = {
 		if (this._searchProvider == null) {
 			if (ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
 				this._searchProvider = new PidginSearchProvider(this);
-			} else {
+			} else if (ExtensionUtils.versionCheck(['3.12'], Config.PACKAGE_VERSION)) {
 				this._searchProvider = new PidginSearchProvider312(this);
+			} else {
+				this._searchProvider = new PidginSearchProvider314(this);
 			}
 		}
 		this._searchProvider.enable();
