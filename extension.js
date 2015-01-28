@@ -307,14 +307,20 @@ ImSource.prototype = {
 		this._conv_id = proxy.PurpleConvImSync(conversation);
 		this._buddy = proxy.PurpleFindBuddySync(account, author);
 		this._buddy_alias = _fixText(proxy.PurpleBuddyGetAliasSync(this._buddy));
+		this._buddy_contact = proxy.PurpleBuddyGetContactSync(this._buddy);
 		this._buddy_presence = proxy.PurpleBuddyGetPresenceSync(this._buddy);
 		this._get_status_id();
 
-		this._buddy_icon = proxy.PurpleBuddyGetIconSync(this._buddy);
-		if (this._buddy_icon && this._buddy_icon != 0) {
-			this._icon_file = 'file://' + proxy.PurpleBuddyIconGetFullPathSync(this._buddy_icon);
+		let buddy_custom_icon = proxy.PurpleBlistNodeGetStringSync(this._buddy_contact, 'custom_buddy_icon');
+		if (buddy_custom_icon && buddy_custom_icon != 0) {
+			this._icon_file = 'file://' + proxy.PurpleBuddyIconsGetCacheDirSync() + '/' + buddy_custom_icon;
 		} else {
-			this._icon_file = false;
+			let buddy_icon = proxy.PurpleConvImGetIconSync(this._conv_id);
+			if (buddy_icon && buddy_icon != 0) {
+				this._icon_file = 'file://' + proxy.PurpleBuddyIconGetFullPathSync(buddy_icon);
+			} else {
+				this._icon_file = false;
+			}
 		}
 
 		Source.prototype._init.call(this, client, account, author, conversation);
@@ -389,13 +395,11 @@ ChatSource.prototype = {
 		this._conv_id = proxy.PurpleConvChatSync(conversation);
 		this._status_id = USER_ONLINE;
 
-		let cachedir = proxy.PurpleBuddyIconsGetCacheDirSync();
 		let chat_name = proxy.PurpleConversationGetNameSync(conversation);
 		let chat_node = proxy.PurpleBlistFindChatSync(account, chat_name[0]);
-		let icon = proxy.PurpleBlistNodeGetStringSync(chat_node, "custom_buddy_icon");
-		var icon_file = false;
+		let icon = proxy.PurpleBlistNodeGetStringSync(chat_node, 'custom_buddy_icon');
 		if(icon && icon != 0)
-			this._icon_file = "file://"+cachedir+"/"+icon;
+			this._icon_file = 'file://' + proxy.PurpleBuddyIconsGetCacheDirSync() + '/' + icon;
 		else
 			this._icon_file = false;
 
@@ -465,11 +469,23 @@ PidginSearchProviderBase.prototype = {
 	_createIconForBuddy: function(buddy, status_code, iconSize) {
 		let box = new St.Widget({layout_manager: new Clutter.BinLayout()});
 		let p = this._client.proxy;
-		let icon = p.PurpleBuddyGetIconSync(buddy);
-		if (icon && icon != 0) {
+
+		let buddy_custom_icon = p.PurpleBlistNodeGetStringSync(p.PurpleBuddyGetContactSync(buddy), 'custom_buddy_icon');
+		if (buddy_custom_icon && buddy_custom_icon != 0) {
+			var icon_file = p.PurpleBuddyIconsGetCacheDirSync() + '/' + buddy_custom_icon;
+		} else {
+			let icon = p.PurpleBuddyGetIconSync(buddy);
+			if (icon && icon != 0) {
+				var icon_file = p.PurpleBuddyIconGetFullPathSync(icon);
+			} else {
+				var icon_file = false;
+			}
+		}
+
+		if (icon_file) {
 			box.add_actor(new St.Icon({
 				gicon: new Gio.FileIcon({
-					file: Gio.File.new_for_uri('file://' + p.PurpleBuddyIconGetFullPathSync(icon))
+					file: Gio.File.new_for_uri('file://' + icon_file)
 				}),
 				icon_size: iconSize
 			}));
