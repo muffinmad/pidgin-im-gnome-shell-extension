@@ -59,6 +59,22 @@ const PidginPrefsWidget = new GObject.Class({
 		);
 		this.attach(buddy_label, 0, 2, 1, 1);
 		this.attach(buddy_checkbox, 1, 2, 1, 1);
+
+		let chat_hl_label = new Gtk.Label({
+			label: _('Track only highlighted messages for chats'),
+			hexpand: true,
+			halign: Gtk.Align.START});
+		let chat_hl_checkbox = new Gtk.Switch({
+			halign: Gtk.Align.END});
+		chat_hl_checkbox.set_active(this._settings.get_boolean('chat-highlight-only'));
+		chat_hl_checkbox.connect(
+			'notify::active',
+			Lang.bind(this, function(check) {
+				this._settings.set_boolean('chat-highlight-only', check.get_active());
+			})
+		);
+		this.attach(chat_hl_label, 0, 3, 1, 1);
+		this.attach(chat_hl_checkbox, 1, 3, 1, 1);
 	},
 });
 

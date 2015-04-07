@@ -866,13 +866,15 @@ PidginClient.prototype = {
 
 	_handleMessage: function(account, author, message, conversation, flag, timestamp, isChat) {
 		if (flag & 0x200) flag |= 2; // treat error message as received message
-		if (flag & 3 == 0) { return; } // nor send or receive message
+		if (flag & 3 == 0) return; // nor send or receive message
 		var source = this._sources[conversation];
 		if (!source) {
-			if(isChat)
+			if (isChat) {
+				if (this._settings.get_boolean('chat-highlight-only') && flag != 34) return;
 				source = new ChatSource(this, account, author, conversation);
-			else
+			} else {
 				source = new ImSource(this, account, author, conversation);
+			}
 			let pm = this._pending_messages[conversation];
 			if (pm) {
 				source._pendingMessages = pm;
