@@ -146,14 +146,25 @@ Source.prototype = {
 
 		MessageTray.Source.prototype._init.call(this, this.title);
 
+		this.isChat = true;
 		this._pendingMessages = [];
 
 		this._notification = new TelepathyClient.ChatNotification(this);
-		this._notification.setUrgency(MessageTray.Urgency.HIGH);
+		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+			this._notification.connect('activated', Lang.bind(this, this.open));
+	        this._notification.connect('updated', Lang.bind(this,
+    	        function() {
+	                if (this._banner && this._banner.expanded)
+	                    this._markAllSeen();
+	            })
+			);
+		} else {
+			this._notification.setUrgency(MessageTray.Urgency.HIGH);
 
-		this._notification.connect('expanded', Lang.bind(this, this._notificationExpanded));
-		if (!ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
-			this._notification.connect('clicked', Lang.bind(this, this.open));
+			this._notification.connect('expanded', Lang.bind(this, this._notificationExpanded));
+			if (!ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
+				this._notification.connect('clicked', Lang.bind(this, this.open));
+			}
 		}
 
 		Main.messageTray.add(this);
@@ -172,6 +183,20 @@ Source.prototype = {
 	_createPolicy: function() {
 		return new MessageTray.NotificationApplicationPolicy('pidgin');
 	},
+
+	createBanner: function() {
+        this._banner = new TelepathyClient.ChatNotificationBanner(this._notification);
+
+        // We ack messages when the user expands the new notification
+        let id = this._banner.connect('expanded', Lang.bind(this, this._markAllSeen));
+        this._banner.actor.connect('destroy', Lang.bind(this,
+            function() {
+                this._banner.disconnect(id);
+                this._banner = null;
+            }));
+
+        return this._banner;
+    },
 
 	handleMessage: function(author, text, flag, timestamp) {
 		let direction = null;
@@ -260,6 +285,10 @@ Source.prototype = {
 	},
 
 	open: function(notification) {
+		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+			Main.overview.hide();
+			Main.panel.closeCalendar();
+		}
 		this._client.proxy.PurpleConversationPresentRemote(this._conversation);
 	},
 
@@ -377,7 +406,11 @@ ImSource.prototype = {
 	},
 
 	_updateStatus: function() {
-		this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
+		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+			this._notification.update(this._notification.title, this._notification.bannerBodyText, {secondaryGIcon: this.getSecondaryIcon()});
+		} else {
+			this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
+		}
 	},
 
 }

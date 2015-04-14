@@ -12,7 +12,7 @@
 			<description>Whether to show buddies matching search terms in Overview</description>
 		</key>
 		<key type="b" name="chat-highlight-only">
-			<default>false</default>
+			<default>true</default>
 			<summary>For chats track only highlighted messages</summary>
 			<description>Whether to create notifications for all chat messages or only highlighted messages</description>
 		</key>

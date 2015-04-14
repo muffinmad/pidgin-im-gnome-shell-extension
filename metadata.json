@@ -4,7 +4,7 @@
  "gettext-domain": "gnome-shell-extension-pidgin",
  "settings-schema": "org.gnome.shell.extensions.pidgin",
  "description": "Integrate Pidgin IMs in the Gnome Shell message tray",
- "shell-version": [ "3.10", "3.11", "3.12", "3.14" ],
+ "shell-version": [ "3.10", "3.11", "3.12", "3.14", "3.16" ],
  "url": "https://github.com/muffinmad/pidgin-im-gnome-shell-extension",
- "version": 20
+ "version": 21
 }
