@@ -60,9 +60,8 @@ function _fixText(text) {
 	_text = _text.replace(/&lt;/g, "<");
 	_text = _text.replace(/&gt;/g, ">");
 	_text = _text.replace(/&apos;/g, "'");
-	_text = _text.replace(/&quot;/g, "\"")
+	_text = _text.replace(/&quot;/g, "\"");
 	_text = _text.replace(/&amp;/g, "&");
-
 	return _text;
 }
 
@@ -407,12 +406,11 @@ ImSource.prototype = {
 
 	_updateStatus: function() {
 		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
-			this._notification.update(this._notification.title, this._notification.bannerBodyText, {secondaryGIcon: this.getSecondaryIcon()});
+			this._notification.update(this._notification.title, _fixText(this._notification.bannerBodyText), {secondaryGIcon: this.getSecondaryIcon()});
 		} else {
 			this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
 		}
-	},
-
+	}
 }
 
 function ChatSource(client, account, author, conversation) {
