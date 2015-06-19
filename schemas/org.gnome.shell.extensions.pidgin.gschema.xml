@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="gnome-shell-extensions-pidgin">
 	<schema path="/org/gnome/shell/extensions/pidgin/" id="org.gnome.shell.extensions.pidgin">
-	        <key type="b" name="enable-message-tray">
-		        <default>true</default>
+		<key type="b" name="enable-message-tray">
+			<default>true</default>
 			<summary>Message tray integration</summary>
 			<description>Integrate with the message tray</description>
 		</key>
@@ -10,6 +10,11 @@
 			<default>true</default>
 			<summary>Enable search provider</summary>
 			<description>Whether to show buddies matching search terms in Overview</description>
+		</key>
+		<key type="b" name="chat-highlight-only">
+			<default>true</default>
+			<summary>For chats track only highlighted messages</summary>
+			<description>Whether to create notifications for all chat messages or only highlighted messages</description>
 		</key>
 	</schema>
 </schemalist>

@@ -24,3 +24,7 @@ msgstr ""
 #: prefs.js:48
 msgid "Buddies search provider"
 msgstr ""
+
+#: prefs.js:64
+msgid "Track only highlighted messages for chats"
+msgstr ""
