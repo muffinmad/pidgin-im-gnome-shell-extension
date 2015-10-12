@@ -149,7 +149,7 @@ Source.prototype = {
 		this._pendingMessages = [];
 
 		this._notification = new TelepathyClient.ChatNotification(this);
-		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+		if (ExtensionUtils.versionCheck(['3.16', '3.18'], Config.PACKAGE_VERSION)) {
 			this._notification.connect('activated', Lang.bind(this, this.open));
 	        this._notification.connect('updated', Lang.bind(this,
     	        function() {
@@ -284,7 +284,7 @@ Source.prototype = {
 	},
 
 	open: function(notification) {
-		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+		if (ExtensionUtils.versionCheck(['3.16', '3.18'], Config.PACKAGE_VERSION)) {
 			Main.overview.hide();
 			Main.panel.closeCalendar();
 		}
@@ -405,7 +405,7 @@ ImSource.prototype = {
 	},
 
 	_updateStatus: function() {
-		if (ExtensionUtils.versionCheck(['3.16'], Config.PACKAGE_VERSION)) {
+		if (ExtensionUtils.versionCheck(['3.16', '3.18'], Config.PACKAGE_VERSION)) {
 			this._notification.update(this._notification.title, _fixText(this._notification.bannerBodyText), {secondaryGIcon: this.getSecondaryIcon()});
 		} else {
 			this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
