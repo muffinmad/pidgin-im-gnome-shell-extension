@@ -16,7 +16,7 @@ Make Pidgin IM conversations appear in the Gnome Shell message tray
 - Tries to restore unread messages count after screen lock/unlock
 - Search provider for buddys from connected accounts (can be disabled from extension preferences)
 
-Supported Gnome Shell 3.10, 3.12, 3.14, 3.16
+Supported Gnome Shell 3.10, 3.12, 3.14, 3.16, 3.18
 
 #Installation
 ###Manual
