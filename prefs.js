@@ -3,6 +3,7 @@
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 const Lang = imports.lang;
+const Config = imports.misc.config;
 
 const Gettext = imports.gettext.domain('gnome-shell-extension-pidgin');
 const _ = Gettext.gettext;
@@ -75,6 +76,24 @@ const PidginPrefsWidget = new GObject.Class({
 		);
 		this.attach(chat_hl_label, 0, 3, 1, 1);
 		this.attach(chat_hl_checkbox, 1, 3, 1, 1);
+
+		if (!ExtensionUtils.versionCheck(['3.10', '3.11', '3.12', '3.14'], Config.PACKAGE_VERSION)) {
+			let reopen_banner_label = new Gtk.Label({
+				label: _('Reopen notification banner on notification click'),
+				hexpand: true,
+				halign: Gtk.Align.START});
+			let reopen_banner_checkbox = new Gtk.Switch({
+				halign: Gtk.Align.END});
+			reopen_banner_checkbox.set_active(this._settings.get_boolean('reopen-banner'));
+			reopen_banner_checkbox.connect(
+				'notify::active',
+				Lang.bind(this, function(check) {
+					this._settings.set_boolean('reopen-banner', check.get_active());
+				})
+			);
+			this.attach(reopen_banner_label, 0, 4, 1, 1);
+			this.attach(reopen_banner_checkbox, 1, 4, 1, 1);
+		}
 	},
 });
 

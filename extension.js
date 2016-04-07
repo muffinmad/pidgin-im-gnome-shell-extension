@@ -283,12 +283,22 @@ Source.prototype = {
 		return getStatusIcon(this._status_id);
 	},
 
+	_openPurpleConversation: function() {
+		this._client.proxy.PurpleConversationPresentRemote(this._conversation);
+	},
+
 	open: function(notification) {
 		if (!ExtensionUtils.versionCheck(['3.10', '3.11', '3.12', '3.14'], Config.PACKAGE_VERSION)) {
 			Main.overview.hide();
 			Main.panel.closeCalendar();
+			if (this._client._settings.get_boolean('reopen-banner') && !(this._banner && this._banner.expanded)) {
+				this.notify();
+			} else {
+				this._openPurpleConversation();
+			}
+		} else {
+			this._openPurpleConversation();
 		}
-		this._client.proxy.PurpleConversationPresentRemote(this._conversation);
 	},
 
 	respond: function(text) {

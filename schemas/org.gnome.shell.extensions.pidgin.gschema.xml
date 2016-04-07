@@ -16,5 +16,10 @@
 			<summary>For chats track only highlighted messages</summary>
 			<description>Whether to create notifications for all chat messages or only highlighted messages</description>
 		</key>
+		<key type="b" name="reopen-banner">
+			<default>false</default>
+			<summary>Reopen notification banner on notification click</summary>
+			<description>Wheneter to reopen notification banner on notification click or present pidgin conversation window</description>
+		</key>
 	</schema>
 </schemalist>
