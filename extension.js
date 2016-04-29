@@ -252,7 +252,7 @@ Source.prototype = {
 	},
 
 	setChatState: function(state) {
-		if (this._chatState == state) { return }
+		if (this._chatState == state || this._client.proxy.PurplePrefsGetBoolSync('/purple/conversations/im/send_typing') != 1) { return }
 		this._chatState = state;
 		let s = 0;
 		switch (state) {
