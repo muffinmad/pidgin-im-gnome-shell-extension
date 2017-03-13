@@ -577,11 +577,20 @@ PidginSearchProviderBase.prototype = {
 			let a = b.account_name[0].toLowerCase();
 			let h = b.handle[0].toLowerCase();
 			for (let t in terms) {
-				if ((s.indexOf(terms[t].toLowerCase()) == -1)
-					&& (a.indexOf(terms[t].toLowerCase()) == -1)
-					&& (h.indexOf(terms[t].toLowerCase()) == -1))
-				{
-					return false;
+				let term = terms[t].toLowerCase();
+				let prefix = term.charAt(0);
+				if (prefix == "@") {
+					if (a.indexOf(term.substr(1)) == -1) {
+						return false;
+					}
+				} else if (prefix == "#") {
+					if (h.indexOf(term.substr(1)) == -1) {
+						return false;
+					}
+				} else {
+					if (s.indexOf(term) == -1) {
+						return false;
+					}
 				}
 			}
 			return true;
