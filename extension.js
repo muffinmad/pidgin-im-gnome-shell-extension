@@ -14,33 +14,28 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
+const { Gio, GLib, St, Clutter } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
-const Config = imports.misc.config;
 const DBusIface = Me.imports.dbus;
-const Gio = imports.gi.Gio;
-const GLib = imports.gi.GLib;
-const Lang = imports.lang;
+const Convenience = Me.imports.convenience;
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
-const TelepathyClient = imports.ui.components.telepathyClient;
-const Tp = imports.gi.TelepathyGLib;
 const PopupMenu = imports.ui.popupMenu;
-const St = imports.gi.St;
-const Clutter = imports.gi.Clutter;
-const Convenience = Me.imports.convenience;
+const TelepathyClient = imports.ui.components.telepathyClient;
+const Lang = imports.lang;
 
 function log(text) {
 	global.log('pidgin-im-gs: ' + text);
 }
 
-function wrappedText(text, sender, timestamp, direction) {
+function makeMessage(text, sender, timestamp, direction) {
 	text = _fixText(text);
 
-	let type = Tp.ChannelTextMessageType.NORMAL;
+	let type = 0; // TelepathyGLib.ChannelTextMessageType.NORMAL;
 	if (text.substr(0, 4) == '/me ' && direction != TelepathyClient.NotificationDirection.SENT) {
 		text = text.substr(4);
-		type = Tp.ChannelTextMessageType.ACTION;
+		type = 1; // TelepathyGLib.ChannelTextMessageType.ACTION;
 	}
 
 	return {
@@ -122,18 +117,13 @@ function getStatusIcon(s) {
 	}
 	return new Gio.ThemedIcon({name: iconName});
 }
-/*
- * following gjs style:
- * https://wiki.gnome.org/Projects/GnomeShell/Gjs_StyleGuide
- */
-function Source(client, account, author, conversation) {
-	this._init(client, account, author, conversation);
-}
-Source.prototype = {
-	__proto__: MessageTray.Source.prototype,
 
-	_init: function(client, account, author, conversation) {
+
+var Source = class extends MessageTray.Source {
+	constructor(client, account, author, conversation) {
 		let proxy = client.proxy;
+		super(_fixText(proxy.PurpleConversationGetTitleSync(conversation).toString()));
+		this._status_id = 0;
 		this._account = account;
 		this._chatState = 0;
 		this._client = client;
@@ -141,63 +131,47 @@ Source.prototype = {
 		this._conversation = conversation;
 		this._conv_name = proxy.PurpleConversationGetNameSync(this._conversation).toString();
 		this._conv_gc = proxy.PurpleConversationGetGcSync(this._conversation);
-		this.title = _fixText(proxy.PurpleConversationGetTitleSync(this._conversation).toString());
-
-		MessageTray.Source.prototype._init.call(this, this.title);
 
 		this.isChat = true;
 		this._pendingMessages = [];
 
 		this._notification = new TelepathyClient.ChatNotification(this);
-		if (ExtensionUtils.versionCheck(['3.10', '3.11', '3.12', '3.14'], Config.PACKAGE_VERSION)) {
-			this._notification.setUrgency(MessageTray.Urgency.HIGH);
-
-			this._notification.connect('expanded', Lang.bind(this, this._notificationExpanded));
-			if (!ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
-				this._notification.connect('clicked', Lang.bind(this, this.open));
-			}
-		} else {
-			this._notification.connect('activated', Lang.bind(this, this.open));
-	        this._notification.connect('updated', Lang.bind(this,
-    	        function() {
-	                if (this._banner && this._banner.expanded)
-	                    this._markAllSeen();
-	            })
-			);
-		}
+		this._notification.connect('activated', this.open.bind(this));
+	    this._notification.connect('updated', function(){
+			if (this._banner && this._banner.expanded) this._markAllSeen();
+		}.bind(this));
 
 		Main.messageTray.add(this);
 		this.pushNotification(this._notification);
-	},
+	}
 
-	_markAllSeen: function() {
+	_markAllSeen() {
 		this._pendingMessages = [];
 		this.countUpdated();
-	},
+	}
 
-	_notificationExpanded: function() {
+	_notificationExpanded() {
 		this._markAllSeen();
-	},
+	}
 
-	_createPolicy: function() {
+	_createPolicy() {
 		return new MessageTray.NotificationApplicationPolicy('pidgin');
-	},
+	}
 
-	createBanner: function() {
+	createBanner() {
         this._banner = new TelepathyClient.ChatNotificationBanner(this._notification);
 
         // We ack messages when the user expands the new notification
-        let id = this._banner.connect('expanded', Lang.bind(this, this._markAllSeen));
-        this._banner.actor.connect('destroy', Lang.bind(this,
-            function() {
-                this._banner.disconnect(id);
-                this._banner = null;
-            }));
+        let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
+        this._banner.actor.connect('destroy', function() {
+            this._banner.disconnect(id);
+            this._banner = null;
+        }.bind(this));
 
         return this._banner;
-    },
+    }
 
-	handleMessage: function(author, text, flag, timestamp) {
+	handleMessage(author, text, flag, timestamp) {
 		let direction = null;
 		if (flag & 1) {
 			direction = TelepathyClient.NotificationDirection.SENT;
@@ -209,7 +183,7 @@ Source.prototype = {
 
 		let _now = Date.now() / 1000;
 		let _ts = timestamp == null ? _now : timestamp;
-		let message = this._get_text(author, text, _ts, direction);
+		let message = this._makeMessage(author, text, _ts, direction);
 		this._notification.appendMessage(message, false);
 
 		if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
@@ -224,35 +198,12 @@ Source.prototype = {
 		} else {
 			this._markAllSeen();
 		}
-	},
+	}
 
-	buildRightClickMenu: function() {
-		let menu = MessageTray.Source.prototype.buildRightClickMenu.call(this);
-
-		let item = new PopupMenu.PopupMenuItem('');
-		item.actor.connect('notify::mapped', Lang.bind(this, function() {
-			item.label.set_text(this.isMuted ? _("Unmute") : _("Mute"));
-		}));
-		item.connect('activate', Lang.bind(this, function() {
-			this.setMuted(!this.isMuted);
-			this.emit('done-displaying-content', false);
-		}));
-
-		menu.add(item.actor);
-
-		return menu;
-	},
-
-	setMuted: function(muted) {
-		if (this.isMuted == muted) {
+	setChatState(state) {
+		if (this._chatState == state || this._client.proxy.PurplePrefsGetBoolSync('/purple/conversations/im/send_typing') != 1) {
 			return;
 		}
-		this.isMuted = muted;
-		this.emit('muted-changed');
-	},
-
-	setChatState: function(state) {
-		if (this._chatState == state || this._client.proxy.PurplePrefsGetBoolSync('/purple/conversations/im/send_typing') != 1) { return }
 		this._chatState = state;
 		let s = 0;
 		switch (state) {
@@ -264,84 +215,70 @@ Source.prototype = {
 				break;
 		}
 		this._client.proxy.ServSendTypingRemote(this._conv_gc, this._conv_name, s);
-	},
+	}
 
-	destroy: function () {
-		MessageTray.Source.prototype.destroy.call(this);
-	},
+	destroy() {
+		super.destroy();
+	}
 
-	getIcon: function() {
+	getIcon() {
 		let file = this._icon_file;
 		if (file) {
 			return new Gio.FileIcon({ file: Gio.File.new_for_uri(file) });
 		} else {
 			return new Gio.ThemedIcon({ name: 'avatar-default' });
 		}
-	},
+	}
 
-	getSecondaryIcon: function() {
+	getSecondaryIcon() {
 		return getStatusIcon(this._status_id);
-	},
+	}
 
-	_openPurpleConversation: function() {
+	_openPurpleConversation() {
 		this._client.proxy.PurpleConversationPresentRemote(this._conversation);
-	},
+	}
 
-	open: function(notification) {
-		if (!ExtensionUtils.versionCheck(['3.10', '3.11', '3.12', '3.14'], Config.PACKAGE_VERSION)) {
-			Main.overview.hide();
-			Main.panel.closeCalendar();
-			if (this._client._settings.get_boolean('reopen-banner') && !(this._banner && this._banner.expanded)) {
-				this.notify();
-			} else {
-				this._openPurpleConversation();
-			}
+	open(notification) {
+		Main.overview.hide();
+		Main.panel.closeCalendar();
+		if (this._client._settings.get_boolean('reopen-banner') && !(this._banner && this._banner.expanded)) {
+			this.notify();
 		} else {
 			this._openPurpleConversation();
 		}
-	},
+	}
 
-	respond: function(text) {
+	respond(text) {
 		let proxy = this._client.proxy;
 		let message = GLib.markup_escape_text(text, -1);
 		if(this._isChat)
 			proxy.PurpleConvChatSendRemote(this._conv_id, message);
 		else
 			proxy.PurpleConvImSendRemote(this._conv_id, message);
-	},
+	}
 
-
-	notify: function() {
-		MessageTray.Source.prototype.notify.call(this, this._notification);
-	},
+	notify() {
+		super.notify(this._notification);
+	}
 
 	get count() {
 		return this._pendingMessages.length;
-	},
-
-	get indicatorCount() {
-		return this.count;
-	},
+	}
 
 	get unseenCount() {
 		return this.count;
-	},
+	}
 
 	get countVisible() {
 		return this.count > 0;
 	}
 };
 
-function ImSource(client, account, author, conversation) {
-	this._init(client, account, author, conversation);
-}
-ImSource.prototype = {
-	__proto__ : Source.prototype,
-
-	_init : function(client, account, author, conversation) {
-		let proxy = client.proxy;
+var ImSource = class extends Source {
+	constructor(client, account, author, conversation) {
+		super(client, account, author, conversation);
 		this._isChat = false;
-		this._client = client;
+		let proxy = client.proxy;
 		this._conv_id = proxy.PurpleConvImSync(conversation);
 		this._buddy = proxy.PurpleFindBuddySync(account, author);
 		this._buddy_alias = _fixText(proxy.PurpleBuddyGetAliasSync(this._buddy));
@@ -361,14 +298,12 @@ ImSource.prototype = {
 			}
 		}
 
-		Source.prototype._init.call(this, client, account, author, conversation);
+		this._buddyStatusChangeId = proxy.connectSignal('BuddyStatusChanged', this._onBuddyStatusChange.bind(this));
+		this._buddySignedOffId = proxy.connectSignal('BuddySignedOff', this._onBuddySignedOff.bind(this));
+		this._buddySignedOnId = proxy.connectSignal('BuddySignedOn', this._onBuddySignedOn.bind(this));
+	}
 
-		this._buddyStatusChangeId = proxy.connectSignal('BuddyStatusChanged', Lang.bind(this, this._onBuddyStatusChange));
-		this._buddySignedOffId = proxy.connectSignal('BuddySignedOff', Lang.bind(this, this._onBuddySignedOff));
-		this._buddySignedOnId = proxy.connectSignal('BuddySignedOn', Lang.bind(this, this._onBuddySignedOn));
-	},
-
-	destroy: function() {
+	destroy() {
 		let proxy = this._client.proxy;
 		if (this._buddyStatusChangeId > 0) {
 			proxy.disconnectSignal(this._buddyStatusChangeId);
@@ -382,54 +317,52 @@ ImSource.prototype = {
 			proxy.disconnectSignal(this._buddySignedOffId);
 			this._buddySignedOffId = 0;
 		}
-		Source.prototype.destroy.call(this);
-	},
+		super.destroy();
+	}
 
-	_get_status_id: function() {
+	_get_status_id() {
 		let proxy = this._client.proxy;
 		let buddy_status = proxy.PurplePresenceGetActiveStatusSync(this._buddy_presence);
 		this._status_id = getStatusCode(proxy.PurpleStatusGetIdSync(buddy_status));
-	},
+	}
 
-	_get_text: function(author, text, _ts, direction) {
-		return wrappedText(text, this._buddy_alias, _ts, direction);
-	},
+	_makeMessage(author, text, _ts, direction) {
+		return makeMessage(text, this._buddy_alias, _ts, direction);
+	}
 
-	_onBuddyStatusChange: function (emitter, something, params) {
-		if (params[0] != this._buddy) { return; }
+	_onBuddyStatusChange (emitter, something, params) {
+		if (params[0] != this._buddy) {
+			return;
+		}
 		let proxy = this._client.proxy;
 		this._status_id = getStatusCode(proxy.PurpleStatusGetIdSync(params[2]));
 		this._updateStatus();
-	},
-
-	_onBuddySignedOff: function(emitter, something, params) {
-		if (params.toString() != this._buddy.toString()) return;
-		this._get_status_id();
-		this._updateStatus();
-	},
-
-	_onBuddySignedOn: function(emitter, something, params) {
-		if (params.toString() != this._buddy.toString()) return;
-		this._get_status_id();
-		this._updateStatus();
-	},
-
-	_updateStatus: function() {
-		if (ExtensionUtils.versionCheck(['3.10', '3.11', '3.12', '3.14'], Config.PACKAGE_VERSION)) {
-			this._notification.update(this._notification.title, null, { customContent: true, secondaryGIcon: this.getSecondaryIcon()});
-		} else {
-			this._notification.update(this._notification.title, _fixText(this._notification.bannerBodyText), {secondaryGIcon: this.getSecondaryIcon()});
-		}
 	}
-}
 
-function ChatSource(client, account, author, conversation) {
-	this._init(client, account, author, conversation);
-}
-ChatSource.prototype = {
-	__proto__: Source.prototype,
+	_onBuddySignedOff(emitter, something, params) {
+		if (params.toString() != this._buddy.toString()){
+			return;
+		}
+		this._get_status_id();
+		this._updateStatus();
+	}
 
-	_init: function(client, account, author, conversation) {
+	_onBuddySignedOn(emitter, something, params) {
+		if (params.toString() != this._buddy.toString()) {
+			return;
+		}
+		this._get_status_id();
+		this._updateStatus();
+	}
+
+	_updateStatus() {
+		this._notification.update(this._notification.title, _fixText(this._notification.bannerBodyText), {secondaryGIcon: this.getSecondaryIcon()});
+	}
+};
+
+var ChatSource = class extends Source {
+	constructor(client, account, author, conversation) {
+		super(client, account, author, conversation);
 		let proxy = client.proxy;
 		this._isChat = true;
 		this._cbNames = {};
@@ -443,11 +376,9 @@ ChatSource.prototype = {
 			this._icon_file = 'file://' + proxy.PurpleBuddyIconsGetCacheDirSync() + '/' + icon;
 		else
 			this._icon_file = false;
+	}
 
-		Source.prototype._init.call(this, client, account, author, conversation);
-	},
-
-	_get_text: function(author, text, _ts, direction) {
+	_makeMessage(author, text, _ts, direction) {
 		if(direction ==  TelepathyClient.NotificationDirection.RECEIVED &&
 				this._cbNames[author] == undefined){
 			let proxy = this._client.proxy;
@@ -469,9 +400,9 @@ ChatSource.prototype = {
 		} else
 			author_nick = "";
 
-		return wrappedText('['+author_nick+']: '+text, author, _ts, direction);
-	},
-}
+		return makeMessage('['+author_nick+']: ' + text, author, _ts, direction);
+	}
+};
 
 
 function PidginSearchProviderBase(client) {
@@ -551,7 +482,7 @@ PidginSearchProviderBase.prototype = {
 			createIcon: Lang.bind(this, function(iconSize) {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
 			})
-		}
+		};
 	},
 
 	getResultMetas: function(result, callback) {
@@ -599,7 +530,7 @@ PidginSearchProviderBase.prototype = {
 
 	_getBuddys: function(accounts) {
 		let p = this._client.proxy;
-		let _accounts = accounts.toString().split(',')
+		let _accounts = accounts.toString().split(',');
 		let buddys = [];
 		for (let i in _accounts) {
 			let acc = _accounts[i];
@@ -722,7 +653,7 @@ PidginSearchProvider314.prototype = {
 		Main.overview.viewSelector._searchResults._unregisterProvider(this);
 		this.display = null;
 	}
-}
+};
 
 
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
@@ -823,13 +754,7 @@ PidginClient.prototype = {
 
 	enableSearchProvider: function() {
 		if (this._searchProvider == null) {
-			if (ExtensionUtils.versionCheck(['3.10'], Config.PACKAGE_VERSION)) {
-				this._searchProvider = new PidginSearchProvider(this);
-			} else if (ExtensionUtils.versionCheck(['3.12'], Config.PACKAGE_VERSION)) {
-				this._searchProvider = new PidginSearchProvider312(this);
-			} else {
-				this._searchProvider = new PidginSearchProvider314(this);
-			}
+			this._searchProvider = new PidginSearchProvider314(this);
 		}
 		this._searchProvider.enable();
 	},

@@ -16,18 +16,18 @@
 
 const Gio = imports.gi.Gio;
 
-const PidginIface = loadInterfaceXml("dbus.xml")
+var PidginIface = loadInterfaceXml("dbus.xml");
 
 // inspired from https://github.com/rgcjonas/gnome-shell-extension-appindicator/blob/master/interfaces.js
 // i just copy it and it works , how amazine , i just didn't know what happend
 function loadInterfaceXml(filename) {
-    let extension = imports.misc.extensionUtils.getCurrentExtension()
+    let extension = imports.misc.extensionUtils.getCurrentExtension();
 
-    let interfaces_dir = extension.dir.get_child(".")
+    let interfaces_dir = extension.dir.get_child(".");
 
-    let file = interfaces_dir.get_child(filename)
+    let file = interfaces_dir.get_child(filename);
 
-    let [ result, contents ] = imports.gi.GLib.file_get_contents(file.get_path())
+    let [ result, contents ] = imports.gi.GLib.file_get_contents(file.get_path());
 
     if (result) {
         //HACK: The "" + trick is important as hell because file_get_contents returns
@@ -35,8 +35,11 @@ function loadInterfaceXml(filename) {
         // Otherwise, it will try to check `instanceof XML` and fail miserably because there
         // is no `XML` on very recent SpiderMonkey releases (or, if SpiderMonkey is old enough,
         // will spit out a TypeError soon).
-        return "<node>" + contents + "</node>"
+        if (contents instanceof Uint8Array){
+            contents = imports.byteArray.toString(contents);
+        }
+        return "<node>" + contents + "</node>";
     } else {
-        throw new Error("AppIndicatorSupport: Could not load file: "+filename)
+        throw new Error("PidginIMIntegration: Could not load file: "+filename);
     }
 }
