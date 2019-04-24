@@ -23,7 +23,6 @@ const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
 const PopupMenu = imports.ui.popupMenu;
 const TelepathyClient = imports.ui.components.telepathyClient;
-const Lang = imports.lang;
 
 function log(text) {
 	global.log('pidgin-im-gs: ' + text);
@@ -405,52 +404,48 @@ var ChatSource = class extends Source {
 };
 
 
-function PidginSearchProviderBase(client) {
-	this._init(client);
-}
-PidginSearchProviderBase.prototype = {
-
-	_init: function(client) {
+var PidginSearchProvider = class PidginSearchProvider {
+	constructor(client){
 		this.id = 'pidgin';
 		this._client = client;
 		this._enabled = false;
-	},
+	}
 
-	enable: function() {
-		if (!this._enabled) {
+	enable(){
+		if (!this._enabled){
 			try {
-				this._enable();
+				Main.overview.viewSelector._searchResults._registerProvider(this);
 			} catch (e) {
 				log(e);
 			}
 			this._enabled = true;
 		}
-	},
+	}
 
-	disable: function() {
-		if (this._enabled) {
+	disable(){
+		if (this._enabled){
 			try {
-				this._disable();
+				Main.overview.viewSelector._searchResults._unregisterProvider(this);
+				this.display = null;
 			} catch (e) {
 				log(e);
 			}
 			this._enabled = false;
 		}
-	},
+	}
 
-	_createIconForBuddy: function(buddy, status_code, iconSize) {
+	_createIconForBuddy(buddy, status_code, iconSize) {
 		let box = new St.Widget({layout_manager: new Clutter.BinLayout()});
 		let p = this._client.proxy;
+		var icon_file = false;
 
 		let buddy_custom_icon = p.PurpleBlistNodeGetStringSync(p.PurpleBuddyGetContactSync(buddy), 'custom_buddy_icon');
 		if (buddy_custom_icon && buddy_custom_icon != 0) {
-			var icon_file = p.PurpleBuddyIconsGetCacheDirSync() + '/' + buddy_custom_icon;
+			icon_file = p.PurpleBuddyIconsGetCacheDirSync() + '/' + buddy_custom_icon;
 		} else {
 			let icon = p.PurpleBuddyGetIconSync(buddy);
 			if (icon && icon != 0) {
-				var icon_file = p.PurpleBuddyIconGetFullPathSync(icon);
-			} else {
-				var icon_file = false;
+				icon_file = p.PurpleBuddyIconGetFullPathSync(icon);
 			}
 		}
 
@@ -473,24 +468,24 @@ PidginSearchProviderBase.prototype = {
 			icon_size: iconSize/4
 		}));
 		return box;
-	},
+	}
 
-	getResultMeta: function(result) {
+	getResultMeta(result) {
 		return {
 			id: result.buddy,
 			name: result.alias + "\nvia " + result.account_name,
-			createIcon: Lang.bind(this, function(iconSize) {
+			createIcon: function(iconSize) {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
-			})
+			}.bind(this)
 		};
-	},
+	}
 
-	getResultMetas: function(result, callback) {
+	getResultMetas(result, callback) {
 		let metas = result.map(this.getResultMeta, this);
 		callback(metas);
-	},
+	}
 
-	filterResults: function(results, maxResults) {
+	filterResults(results, maxResults) {
 		let res = results.sort(function(b1, b2) {
 			let result = b2.status_code - b1.status_code;
 			if (result == 0) {
@@ -500,9 +495,9 @@ PidginSearchProviderBase.prototype = {
 		});
 
 		return res.slice(0, maxResults);
-	},
+	}
 
-	_filterBuddys: function(buddys, terms) {
+	_filterBuddys(buddys, terms) {
 		return buddys.filter(function(b) {
 			let s = b.alias.toLowerCase();
 			let a = b.account_name[0].toLowerCase();
@@ -526,9 +521,9 @@ PidginSearchProviderBase.prototype = {
 			}
 			return true;
 		});
-	},
+	}
 
-	_getBuddys: function(accounts) {
+	_getBuddys(accounts) {
 		let p = this._client.proxy;
 		let _accounts = accounts.toString().split(',');
 		let buddys = [];
@@ -551,9 +546,9 @@ PidginSearchProviderBase.prototype = {
 			}
 		}
 		return buddys;
-	},
+	}
 
-	activateResult: function(result) {
+	activateResult(result) {
 		let p = this._client.proxy;
 		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
 			1,
@@ -561,108 +556,29 @@ PidginSearchProviderBase.prototype = {
 			p.PurpleBuddyGetNameSync(result).toString()
 		));
 	}
-};
 
-
-function PidginSearchProvider(client) {
-	this._init(client);
-}
-PidginSearchProvider.prototype = {
-	__proto__: PidginSearchProviderBase.prototype,
-
-	_enable: function() {
-		Main.overview.addSearchProvider(this);
-	},
-
-	_disable: function() {
-		Main.overview.removeSearchProvider(this);
-	},
-
-	_got_accounts: function(accounts) {
-		this.searchSystem.setResults(this, this._filterBuddys(this._getBuddys(accounts), this._terms));
-	},
-
-	getInitialResultSet: function(terms) {
-		this._terms = terms;
-		try {
-			this._client.proxy.PurpleAccountsGetAllActiveRemote(Lang.bind(this, this._got_accounts));
-		} catch (e) {
-			log(e);
-		}
-	},
-
-	getSubsearchResultSet: function(previousResults, terms) {
-		this.searchSystem.setResults(this, this._filterBuddys(previousResults, terms));
-	},
-
-	createResultObject: function(resultMeta, terms) {
-		return null;
-	}
-}
-
-
-function PidginSearchProvider312(client) {
-	this._init(client);
-}
-PidginSearchProvider312.prototype = {
-
-	__proto__: PidginSearchProviderBase.prototype,
-
-	_enable: function() {
-		Main.overview.viewSelector._searchResults._searchSystem.addProvider(this);
-	},
-
-	_disable: function() {
-		let ss = Main.overview.viewSelector._searchResults._searchSystem;
-		let index = ss._providers.indexOf(this);
-		ss._providers.splice(index, 1);
-		ss.emit('providers-changed');
-	},
-
-	getInitialResultSet: function(terms, callback, cancellable) {
+	getInitialResultSet(terms, callback, cancellable) {
 		try {
 			let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
 			callback(this._filterBuddys(this._getBuddys(accounts), terms));
 		} catch (e) {
 			log(e);
 		}
-	},
-
-	getSubsearchResultSet: function(previousResults, terms, callback, cancellable) {
-		callback(this._filterBuddys(previousResults, terms));
-	},
-
-	createResultObject: function(resultMeta) {
-		return null;
 	}
-}
 
+	getSubsearchResultSet(previousResults, terms, callback, cancellable) {
+		callback(this._filterBuddys(previousResults, terms));
+	}
 
-function PidginSearchProvider314(client) {
-	this._init(client);
-}
-PidginSearchProvider314.prototype = {
-
-	__proto__: PidginSearchProvider312.prototype,
-
-	_enable: function() {
-		Main.overview.viewSelector._searchResults._registerProvider(this);
-	},
-
-	_disable: function() {
-		Main.overview.viewSelector._searchResults._unregisterProvider(this);
-		this.display = null;
+	createResultObject(resultMeta) {
+		return null;
 	}
 };
 
-
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
-function PidginClient() {
-	this._init();
-}
-PidginClient.prototype = {
-	_init: function() {
+var PidginClient = class PidginClient {
+	constructor() {
 		this._sources = {};
 		this._pending_messages = {};
 		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
@@ -673,63 +589,59 @@ PidginClient.prototype = {
 		this._searchProvider = null;
 		this._messageTrayIntegration = false;
 		this._settings = Convenience.getSettings();
-	},
+	}
 
-	_enableMessageTrayChanged: function() {
+	_enableMessageTrayChanged() {
 		if (this._settings.get_boolean('enable-message-tray')) {
 			this.enableMessageTrayIntegration();
 		} else {
 			this.disableMessageTrayIntegration();
 		}
-	},
+	}
 
-	_enableSearchProviderChanged: function() {
+	_enableSearchProviderChanged() {
 		if (this._settings.get_boolean('enable-search-provider')) {
 			this.enableSearchProvider();
 		} else {
 			this.disableSearchProvider();
 		}
-	},
+	}
 
-	enable: function() {
+	enable() {
 		this._enableMessageTrayChangeId =
 			this._settings.connect(
 				'changed::enable-message-tray',
-				Lang.bind(this, this._enableMessageTrayChanged));
+				this._enableMessageTrayChanged.bind(this));
 		this._enableSearchProviderChangeId =
 			this._settings.connect(
 				'changed::enable-search-provider',
-				Lang.bind(this, this._enableSearchProviderChanged));
+				this._enableSearchProviderChanged.bind(this));
 		this._enableSearchProviderChanged();
 		this._enableMessageTrayChanged();
-	},
+	}
 
-	enableMessageTrayIntegration: function() {
+	enableMessageTrayIntegration() {
 		if (this._messageTrayIntegration) {
 			return;
 		}
 
-		this._displayedImMsgId = this._proxy.connectSignal('DisplayedImMsg',
-				Lang.bind(this, this._messageDisplayed, false));
-		this._displayedChatMsgId = this._proxy.connectSignal('DisplayedChatMsg',
-				Lang.bind(this, this._messageDisplayed, true));
-		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation',
-				Lang.bind(this, this._onDeleteConversation));
-		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated',
-				Lang.bind(this, this._onConversationUpdated));
+		this._displayedImMsgId = this._proxy.connectSignal('DisplayedImMsg', this._messageDisplayedIm.bind(this));
+		this._displayedChatMsgId = this._proxy.connectSignal('DisplayedChatMsg', this._messageDisplayedChat.bind(this));
+		this._deleteConversationId = this._proxy.connectSignal('DeletingConversation', this._onDeleteConversation.bind(this));
+		this._conversationUpdatedId = this._proxy.connectSignal('ConversationUpdated', this._onConversationUpdated.bind(this));
 
 		// existing conversations
 		try {
 			let conversations = this._proxy.PurpleGetImsSync().toString().split(',');
 			for (let i in conversations) {
 				let conv = conversations[i];
-				if (!conv || conv == null) { continue }
+				if (!conv || conv == null) continue;
 				let messages = this._proxy.PurpleConversationGetMessageHistorySync(conv).toString().split(',');
 				let history = [];
 				let account = this._proxy.PurpleConversationGetAccountSync(conv);
 				for (let x in messages) {
 					let mess = messages[x];
-					if (!mess || mess == null) { continue }
+					if (!mess || mess == null) continue;
 					history.push({
 						conv: conv,
 						account: account,
@@ -739,8 +651,10 @@ PidginClient.prototype = {
 						timestamp: this._proxy.PurpleConversationMessageGetTimestampSync(mess)
 					});
 				}
-				if (history.length == 0) { continue }
-				history = history.sort(function(m1, m2) { return m1.timestamp - m2.timestamp });
+				if (history.length == 0) continue;
+				history = history.sort(function(m1, m2) {
+					return m1.timestamp - m2.timestamp;
+				});
 				for (let x in history) {
 					let h = history[x];
 					this._handleMessage(h.account, h.author, h.text, h.conv, h.flag, h.timestamp, false);
@@ -750,16 +664,16 @@ PidginClient.prototype = {
 			log(e);
 		}
 		this._messageTrayIntegration = true;
-	},
+	}
 
-	enableSearchProvider: function() {
+	enableSearchProvider() {
 		if (this._searchProvider == null) {
-			this._searchProvider = new PidginSearchProvider314(this);
+			this._searchProvider = new PidginSearchProvider(this);
 		}
 		this._searchProvider.enable();
-	},
+	}
 
-	disable: function() {
+	disable() {
 		this.disableMessageTrayIntegration();
 		this.disableSearchProvider();
 
@@ -769,9 +683,9 @@ PidginClient.prototype = {
 		if (this._enableMessageTrayChangeId > 0) {
 			this._settings.disconnect(this._enableMessageTrayChangeId);
 		}
-	},
+	}
 
-	disableMessageTrayIntegration: function() {
+	disableMessageTrayIntegration() {
 		if (! this._messageTrayIntegration) {
 			return;
 		}
@@ -802,44 +716,44 @@ PidginClient.prototype = {
 			}
 		}
 		this._messageTrayIntegration = false;
-	},
+	}
 
-	disableSearchProvider: function() {
+	disableSearchProvider() {
 		if (this._searchProvider != null) {
 			this._searchProvider.disable();
 		}
-	},
+	}
 
 	get disable_timestamp() {
 		return this._disable_timestamp;
-	},
+	}
 
 	get proxy() {
 		return this._proxy;
-	},
+	}
 
 	get searchProvider() {
 		return this._searchProvider;
-	},
+	}
 
-	_onDeleteConversation: function(emitter, something, conversation) {
+	_onDeleteConversation(emitter, something, conversation) {
 		let source = this._sources[conversation];
 		if (source) {
 			source.destroy();
 		}
-	},
+	}
 
-	_onConversationUpdated: function (emitter, something, params) {
-		if (params[1] != 4) { return; }
+	_onConversationUpdated(emitter, something, params) {
+		if (params[1] != 4) return;
 		let source = this._sources[params[0]];
-		if (!source) { return }
+		if (!source) return;
 		let focus = this._proxy.PurpleConversationHasFocusSync(params[0]);
 		if (focus == 1) {
 			source._markAllSeen();
 		}
-	},
+	}
 
-	_handleMessage: function(account, author, message, conversation, flag, timestamp, isChat) {
+	_handleMessage(account, author, message, conversation, flag, timestamp, isChat) {
 		if (flag & 0x200) flag |= 2; // treat error message as received message
 		if (flag & 3 == 0) return; // nor send or receive message
 		var source = this._sources[conversation];
@@ -856,17 +770,15 @@ PidginClient.prototype = {
 				source.countUpdated();
 				delete this._pending_messages[conversation];
 			}
-			source.connect('destroy', Lang.bind(this,
-				function() {
-					delete this._sources[conversation];
-				}
-			));
+			source.connect('destroy', function() {
+				delete this._sources[conversation];
+			}.bind(this));
 			this._sources[conversation] = source;
 		}
 		source.handleMessage(author, message, flag, timestamp);
-	},
+	}
 
-	_messageDisplayed: function(emitter, something, details, isChat) {
+	_messageDisplayed(details, isChat) {
 		var account = details[0];
 		var author = details[1];
 		var message = details[2];
@@ -874,8 +786,16 @@ PidginClient.prototype = {
 		var flag = details[4];
 
 		this._handleMessage(account, author, message, conversation, flag, null, isChat);
-	},
-}
+	}
+
+	_messageDisplayedIm(emitter, something, details){
+		this._messageDisplayed(details, false);
+	}
+
+	_messageDisplayedChat(emitter, something, details){
+		this._messageDisplayed(details, true);
+	}
+};
 
 function init(metaObject) {
 	return new PidginClient();
