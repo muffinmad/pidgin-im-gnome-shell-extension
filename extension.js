@@ -248,7 +248,8 @@ var Source = class extends MessageTray.Source {
 
 	respond(text) {
 		let proxy = this._client.proxy;
-		let message = GLib.markup_escape_text(text, -1);
+		// looks like pidgin has special behavior with &apos; #40
+		let message = GLib.markup_escape_text(text, -1).replace(/&apos;/g, "'");
 		if(this._isChat)
 			proxy.PurpleConvChatSendRemote(this._conv_id, message);
 		else
