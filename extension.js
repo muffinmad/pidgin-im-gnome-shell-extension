@@ -1,4 +1,3 @@
-/* -*- mode: js2; js2-basic-offset: 4; tab-width: 4 -*- */
 /**
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -800,5 +799,3 @@ var PidginClient = class PidginClient {
 function init(metaObject) {
 	return new PidginClient();
 }
-
-// vim:noexpandtab:ts=4
