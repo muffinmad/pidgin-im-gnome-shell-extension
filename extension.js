@@ -13,7 +13,7 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-const { Gio, GLib, St, Clutter } = imports.gi;
+const { Gio, GLib, St, Clutter, GObject } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const DBusIface = Me.imports.dbus;
@@ -117,10 +117,11 @@ function getStatusIcon(s) {
 }
 
 
-var Source = class extends MessageTray.Source {
-	constructor(client, account, author, conversation) {
+var Source = GObject.registerClass(
+class Source extends MessageTray.Source {
+	_init(client, account, author, conversation) {
 		let proxy = client.proxy;
-		super(_fixText(proxy.PurpleConversationGetTitleSync(conversation).toString()));
+		super._init(_fixText(proxy.PurpleConversationGetTitleSync(conversation).toString()));
 		this._status_id = 0;
 		this._account = account;
 		this._chatState = 0;
@@ -161,7 +162,7 @@ var Source = class extends MessageTray.Source {
 
         // We ack messages when the user expands the new notification
         let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
-        this._banner.actor.connect('destroy', function() {
+        this._banner.connect('destroy', function() {
             this._banner.disconnect(id);
             this._banner = null;
         }.bind(this));
@@ -257,7 +258,7 @@ var Source = class extends MessageTray.Source {
 	}
 
 	notify() {
-		super.notify(this._notification);
+		super.showNotification(this._notification);
 	}
 
 	get count() {
@@ -271,11 +272,12 @@ var Source = class extends MessageTray.Source {
 	get countVisible() {
 		return this.count > 0;
 	}
-};
+});
 
-var ImSource = class extends Source {
-	constructor(client, account, author, conversation) {
-		super(client, account, author, conversation);
+var ImSource = GObject.registerClass(
+class ImSource extends Source {
+	_init(client, account, author, conversation) {
+		super._init(client, account, author, conversation);
 		this._isChat = false;
 		let proxy = client.proxy;
 		this._conv_id = proxy.PurpleConvImSync(conversation);
@@ -357,9 +359,10 @@ var ImSource = class extends Source {
 	_updateStatus() {
 		this._notification.update(this._notification.title, _fixText(this._notification.bannerBodyText), {secondaryGIcon: this.getSecondaryIcon()});
 	}
-};
+});
 
-var ChatSource = class extends Source {
+var ChatSource = GObject.registerClass(
+class ChatSource extends Source {
 	constructor(client, account, author, conversation) {
 		super(client, account, author, conversation);
 		let proxy = client.proxy;
@@ -401,7 +404,7 @@ var ChatSource = class extends Source {
 
 		return makeMessage('['+author_nick+']: ' + text, author, _ts, direction);
 	}
-};
+});
 
 
 var PidginSearchProvider = class PidginSearchProvider {

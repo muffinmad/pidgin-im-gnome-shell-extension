@@ -5,6 +5,6 @@
     "url": "https://github.com/muffinmad/pidgin-im-gnome-shell-extension",
     "gettext-domain": "gnome-shell-extension-pidgin",
     "settings-schema": "org.gnome.shell.extensions.pidgin",
-    "shell-version": [ "3.32" ],
-    "version": 33
+    "shell-version": [ "3.36" ],
+    "version": 34
 }
