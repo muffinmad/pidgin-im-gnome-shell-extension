@@ -28,3 +28,7 @@ msgstr ""
 #: prefs.js:64
 msgid "Track only highlighted messages for chats"
 msgstr ""
+
+#: perfs.js:82
+msgid "Reopen notification banner on notification click"
+msgstr ""
