@@ -363,8 +363,8 @@ class ImSource extends Source {
 
 var ChatSource = GObject.registerClass(
 class ChatSource extends Source {
-	constructor(client, account, author, conversation) {
-		super(client, account, author, conversation);
+	_init(client, account, author, conversation) {
+		super._init(client, account, author, conversation);
 		let proxy = client.proxy;
 		this._isChat = true;
 		this._cbNames = {};
