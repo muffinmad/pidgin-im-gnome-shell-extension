@@ -3,32 +3,33 @@
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
+"Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2015-06-19 12:44-0300\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
+"PO-Revision-Date: 2020-04-23 10:57+0200\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: fr\n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.3\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
 #: prefs.js:32
 msgid "Message tray integration"
-msgstr ""
+msgstr "Intégration des messages dans la barre des notifications"
 
 #: prefs.js:48
 msgid "Buddies search provider"
-msgstr ""
+msgstr "Connecteur avec la recherche des contacts (aperçu/icône)"
 
 #: prefs.js:64
 msgid "Track only highlighted messages for chats"
-msgstr ""
+msgstr "Suivre seulement les messages \"highlités\" pour les chats"
 
 #: perfs.js:82
 msgid "Reopen notification banner on notification click"
-msgstr ""
+msgstr "Réouvrir la bannière de notification au clic"
