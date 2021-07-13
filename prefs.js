@@ -1,5 +1,3 @@
-// -*- mode: js2; indent-tabs-mode: nil; js2-basic-offset: 8 -*-
-
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 const Lang = imports.lang;
@@ -98,7 +96,5 @@ const PidginPrefsWidget = new GObject.Class({
 
 function buildPrefsWidget() {
 	let widget = new PidginPrefsWidget();
-	widget.show_all();
-
 	return widget;
 }

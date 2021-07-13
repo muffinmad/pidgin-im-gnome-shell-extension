@@ -191,7 +191,7 @@ class Source extends MessageTray.Source {
 				this._pendingMessages.push(message);
 				this.countUpdated();
 				if (!this._isChat || flag == 34) {
-					this.notify();
+					this.showNotification();
 				}
 			}
 		} else {
@@ -241,7 +241,7 @@ class Source extends MessageTray.Source {
 		Main.overview.hide();
 		Main.panel.closeCalendar();
 		if (this._client._settings.get_boolean('reopen-banner') && !(this._banner && this._banner.expanded)) {
-			this.notify();
+			this.showNotification();
 		} else {
 			this._openPurpleConversation();
 		}
@@ -257,7 +257,7 @@ class Source extends MessageTray.Source {
 			proxy.PurpleConvImSendRemote(this._conv_id, message);
 	}
 
-	notify() {
+	showNotification() {
 		super.showNotification(this._notification);
 	}
 
@@ -417,7 +417,7 @@ var PidginSearchProvider = class PidginSearchProvider {
 	enable(){
 		if (!this._enabled){
 			try {
-				Main.overview.viewSelector._searchResults._registerProvider(this);
+				Main.overview._overview._controls._searchController._searchResults._registerProvider(this);
 			} catch (e) {
 				log(e);
 			}
@@ -428,7 +428,7 @@ var PidginSearchProvider = class PidginSearchProvider {
 	disable(){
 		if (this._enabled){
 			try {
-				Main.overview.viewSelector._searchResults._unregisterProvider(this);
+				Main.overview._overview._controls._searchController._searchResults._unregisterProvider(this);
 				this.display = null;
 			} catch (e) {
 				log(e);
