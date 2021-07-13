@@ -136,7 +136,7 @@ class Source extends MessageTray.Source {
 
 		this._notification = new TelepathyClient.ChatNotification(this);
 		this._notification.connect('activated', this.open.bind(this));
-	    this._notification.connect('updated', function(){
+		this._notification.connect('updated', function(){
 			if (this._banner && this._banner.expanded) this._markAllSeen();
 		}.bind(this));
 
@@ -407,14 +407,16 @@ class ChatSource extends Source {
 });
 
 
-var PidginSearchProvider = class PidginSearchProvider {
-	constructor(client){
+var PidginSearchProvider = GObject.registerClass(
+class PidginSearchProvider extends GObject.Object {
+	_init(client){
+		super._init();
 		this.id = 'pidgin';
 		this._client = client;
 		this._enabled = false;
 	}
 
-	enable(){
+	enable() {
 		if (!this._enabled){
 			try {
 				Main.overview._overview._controls._searchController._searchResults._registerProvider(this);
@@ -425,7 +427,7 @@ var PidginSearchProvider = class PidginSearchProvider {
 		}
 	}
 
-	disable(){
+	disable() {
 		if (this._enabled){
 			try {
 				Main.overview._overview._controls._searchController._searchResults._unregisterProvider(this);
@@ -576,22 +578,22 @@ var PidginSearchProvider = class PidginSearchProvider {
 	createResultObject(resultMeta) {
 		return null;
 	}
-};
+});
 
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
-var PidginClient = class PidginClient {
-	constructor() {
+var PidginClient = GObject.registerClass(
+class PidginClient extends GObject.Object {
+	_init() {
+		super._init();
 		this._sources = {};
 		this._pending_messages = {};
-		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
 		this._displayedImMsgId = 0;
 		this._setAvailable = 0;
 		this._setUnavailable = 0;
 		this._disable_timestamp = 0;
 		this._searchProvider = null;
 		this._messageTrayIntegration = false;
-		this._settings = Convenience.getSettings();
 	}
 
 	_enableMessageTrayChanged() {
@@ -611,6 +613,8 @@ var PidginClient = class PidginClient {
 	}
 
 	enable() {
+		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
+		this._settings = Convenience.getSettings();
 		this._enableMessageTrayChangeId =
 			this._settings.connect(
 				'changed::enable-message-tray',
@@ -686,6 +690,8 @@ var PidginClient = class PidginClient {
 		if (this._enableMessageTrayChangeId > 0) {
 			this._settings.disconnect(this._enableMessageTrayChangeId);
 		}
+		this._proxy = null;
+		this._settings = null;
 	}
 
 	disableMessageTrayIntegration() {
@@ -798,8 +804,8 @@ var PidginClient = class PidginClient {
 	_messageDisplayedChat(emitter, something, details){
 		this._messageDisplayed(details, true);
 	}
-};
+});
 
-function init(metaObject) {
+function init() {
 	return new PidginClient();
 }
