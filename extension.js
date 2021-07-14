@@ -136,9 +136,9 @@ class Source extends MessageTray.Source {
 
 		this._notification = new TelepathyClient.ChatNotification(this);
 		this._notification.connect('activated', this.open.bind(this));
-		this._notification.connect('updated', function(){
+		this._notification.connect('updated', () => {
 			if (this._banner && this._banner.expanded) this._markAllSeen();
-		}.bind(this));
+		});
 
 		Main.messageTray.add(this);
 		this.pushNotification(this._notification);
@@ -162,10 +162,10 @@ class Source extends MessageTray.Source {
 
         // We ack messages when the user expands the new notification
         let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
-        this._banner.connect('destroy', function() {
+        this._banner.connect('destroy', () => {
             this._banner.disconnect(id);
             this._banner = null;
-        }.bind(this));
+        });
 
         return this._banner;
     }
@@ -479,9 +479,9 @@ class PidginSearchProvider extends GObject.Object {
 		return {
 			id: result.buddy,
 			name: result.alias + "\nvia " + result.account_name,
-			createIcon: function(iconSize) {
+			createIcon: (iconSize) => {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
-			}.bind(this)
+			}
 		};
 	}
 
@@ -779,9 +779,9 @@ class PidginClient extends GObject.Object {
 				source.countUpdated();
 				delete this._pending_messages[conversation];
 			}
-			source.connect('destroy', function() {
+			source.connect('destroy', () => {
 				delete this._sources[conversation];
-			}.bind(this));
+			});
 			this._sources[conversation] = source;
 		}
 		source.handleMessage(author, message, flag, timestamp);

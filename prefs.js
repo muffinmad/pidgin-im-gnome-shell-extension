@@ -1,6 +1,5 @@
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
-const Lang = imports.lang;
 const Config = imports.misc.config;
 
 const Gettext = imports.gettext.domain('gnome-shell-extension-pidgin');
@@ -36,9 +35,9 @@ const PidginPrefsWidget = new GObject.Class({
 		msg_checkbox.set_active(this._settings.get_boolean('enable-message-tray'));
 		msg_checkbox.connect(
 			'notify::active',
-			Lang.bind(this, function(check) {
+			(check) => {
 				this._settings.set_boolean('enable-message-tray', check.get_active());
-			})
+			}
 		);
 		this.attach(msg_label, 0, 1, 1, 1);
 		this.attach(msg_checkbox, 1, 1, 1, 1);
@@ -52,9 +51,9 @@ const PidginPrefsWidget = new GObject.Class({
 		buddy_checkbox.set_active(this._settings.get_boolean('enable-search-provider'));
 		buddy_checkbox.connect(
 			'notify::active',
-			Lang.bind(this, function(check) {
+			(check) => {
 				this._settings.set_boolean('enable-search-provider', check.get_active());
-			})
+			}
 		);
 		this.attach(buddy_label, 0, 2, 1, 1);
 		this.attach(buddy_checkbox, 1, 2, 1, 1);
@@ -68,9 +67,9 @@ const PidginPrefsWidget = new GObject.Class({
 		chat_hl_checkbox.set_active(this._settings.get_boolean('chat-highlight-only'));
 		chat_hl_checkbox.connect(
 			'notify::active',
-			Lang.bind(this, function(check) {
+			(check) => {
 				this._settings.set_boolean('chat-highlight-only', check.get_active());
-			})
+			}
 		);
 		this.attach(chat_hl_label, 0, 3, 1, 1);
 		this.attach(chat_hl_checkbox, 1, 3, 1, 1);
@@ -84,9 +83,9 @@ const PidginPrefsWidget = new GObject.Class({
 		reopen_banner_checkbox.set_active(this._settings.get_boolean('reopen-banner'));
 		reopen_banner_checkbox.connect(
 			'notify::active',
-			Lang.bind(this, function(check) {
+			(check) => {
 				this._settings.set_boolean('reopen-banner', check.get_active());
-			})
+			}
 		);
 		this.attach(reopen_banner_label, 0, 4, 1, 1);
 		this.attach(reopen_banner_checkbox, 1, 4, 1, 1);
