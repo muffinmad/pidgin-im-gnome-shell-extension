@@ -21,6 +21,7 @@ Make Pidgin IM conversations appear in the Gnome Shell message tray
 - v31: 3.10 - 3.30
 - v32: 3.32
 - v36: 3.36
+- v40: 40 - 41
 
 ## Installation
 
