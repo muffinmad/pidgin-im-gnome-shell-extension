@@ -1,0 +1,36 @@
+# Ukrainian translations for PACKAGE package
+# Переклад українською для пакету PACKAGE.
+# Copyright (C) 2022 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# mad <andreyk.mad@gmail.com>, 2022.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2015-06-19 12:44-0300\n"
+"PO-Revision-Date: 2022-06-03 23:17+0300\n"
+"Last-Translator: mad <andreyk.mad@gmail.com>\n"
+"Language-Team: \n"
+"Language: uk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
+"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: prefs.js:32
+msgid "Message tray integration"
+msgstr "Інтегрувати з нотифікаціями"
+
+#: prefs.js:48
+msgid "Buddies search provider"
+msgstr "Відображати контакти при пошуку"
+
+#: prefs.js:64
+msgid "Track only highlighted messages for chats"
+msgstr "В чатах сповіщати тільки про згадки"
+
+#: perfs.js:82
+msgid "Reopen notification banner on notification click"
+msgstr "Клацання по сповіщеню знов відкриває банер"

@@ -6,12 +6,10 @@ const Gettext = imports.gettext.domain('gnome-shell-extension-pidgin');
 const _ = Gettext.gettext;
 
 const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-const Convenience = Me.imports.convenience;
 
 
 function init() {
-	Convenience.initTranslations();
+	ExtensionUtils.initTranslations();
 }
 
 const PidginPrefsWidget = new GObject.Class({
@@ -22,7 +20,7 @@ const PidginPrefsWidget = new GObject.Class({
 	_init: function(params) {
 		this.parent(params);
 		this.row_spacing = 10;
-		this._settings = Convenience.getSettings();
+		this._settings = ExtensionUtils.getSettings();
 
 		this.margin = 24;
 		this.spacing = 30;

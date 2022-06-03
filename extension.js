@@ -17,7 +17,6 @@ const { Gio, GLib, St, Clutter, GObject } = imports.gi;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const DBusIface = Me.imports.dbus;
-const Convenience = Me.imports.convenience;
 const Main = imports.ui.main;
 const MessageTray = imports.ui.messageTray;
 const PopupMenu = imports.ui.popupMenu;
@@ -614,7 +613,7 @@ class PidginClient extends GObject.Object {
 
 	enable() {
 		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
-		this._settings = Convenience.getSettings();
+		this._settings = ExtensionUtils.getSettings();
 		this._enableMessageTrayChangeId =
 			this._settings.connect(
 				'changed::enable-message-tray',
