@@ -1,3 +1,5 @@
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://stand-with-ukraine.pp.ua)
+
 # pidgin-im-gnome-shell-extension
 
 Make Pidgin IM conversations appear in the Gnome Shell message tray
