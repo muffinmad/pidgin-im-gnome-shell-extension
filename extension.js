@@ -14,6 +14,7 @@
 **/
 
 const { Gio, GLib, St, Clutter, GObject } = imports.gi;
+const Config = imports.misc.config;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const DBusIface = Me.imports.dbus;
@@ -405,12 +406,10 @@ class ChatSource extends Source {
 	}
 });
 
+class PidginBaseSearchProvider {
 
-var PidginSearchProvider = GObject.registerClass(
-class PidginSearchProvider extends GObject.Object {
 	_init(client){
 		super._init();
-		this.id = 'pidgin';
 		this._client = client;
 		this._enabled = false;
 	}
@@ -484,11 +483,6 @@ class PidginSearchProvider extends GObject.Object {
 		};
 	}
 
-	getResultMetas(result, callback) {
-		let metas = result.map(this.getResultMeta, this);
-		callback(metas);
-	}
-
 	filterResults(results, maxResults) {
 		let res = results.sort(function(b1, b2) {
 			let result = b2.status_code - b1.status_code;
@@ -552,6 +546,19 @@ class PidginSearchProvider extends GObject.Object {
 		return buddys;
 	}
 
+	createResultObject(resultMeta) {
+		return null;
+	}
+
+	searchBuddysByTerms(terms) {
+		try {
+			let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
+			return this._filterBuddys(this._getBuddys(accounts), terms);
+		} catch (e) {
+			log(`PidginBaseSearchProvider::searchByTerms(${terms}): ${e}`);
+		}
+	}
+
 	activateResult(result) {
 		let p = this._client.proxy;
 		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
@@ -561,10 +568,26 @@ class PidginSearchProvider extends GObject.Object {
 		));
 	}
 
+}
+
+
+var PidginLegacySearchProvider = GObject.registerClass(
+class PidginLegacySearchProvider extends (PidginBaseSearchProvider, GObject.Object) {
+	_init(client){
+		super._init();
+		this.id = 'pidgin';
+		this._client = client;
+		this._enabled = false;
+	}
+
+	getResultMetas(result, callback) {
+		let metas = result.map(this.getResultMeta, this);
+		callback(metas);
+	}
+
 	getInitialResultSet(terms, callback, cancellable) {
 		try {
-			let accounts = this._client.proxy.PurpleAccountsGetAllActiveSync();
-			callback(this._filterBuddys(this._getBuddys(accounts), terms));
+			callback(this.searchBuddysByTerms(terms));
 		} catch (e) {
 			log(e);
 		}
@@ -573,11 +596,144 @@ class PidginSearchProvider extends GObject.Object {
 	getSubsearchResultSet(previousResults, terms, callback, cancellable) {
 		callback(this._filterBuddys(previousResults, terms));
 	}
+});
 
-	createResultObject(resultMeta) {
+class PidginSearchProvider extends PidginBaseSearchProvider {
+	constructor(client){
+		super();
+		this._client = client;
+		this._enabled = false;
+		this._resultSet = [];
+	}
+
+	/**
+	 * The application of the provider.
+	 *
+	 * Applications will return a `Gio.AppInfo` representing themselves.
+	 * Extensions will usually return `null`.
+	 *
+	 * @type {Gio.AppInfo}
+	 */
+	get appInfo() {
 		return null;
 	}
-});
+
+	/**
+	 * Whether the provider offers detailed results.
+	 *
+	 * Applications will return `true` if they have a way to display more
+	 * detailed or complete results. Extensions will usually return `false`.
+	 *
+	 * @type {boolean}
+	 */
+	get canLaunchSearch() {
+		return true;
+	}
+
+	/**
+	 * The unique ID of the provider.
+	 *
+	 * Applications will return their application ID. Extensions will usually
+	 * return their UUID.
+	 *
+	 * @type {string}
+	 */
+	get id() {
+		return imports.misc.extensionUtils.getCurrentExtension().uuid;
+	}
+
+	/**
+	 * Launch the search result.
+	 *
+	 * This method is called when a search provider result is activated.
+	 *
+	 * @param {string} result - The result identifier
+	 * @param {string[]} terms - The search terms
+	 */
+	activateResult(result, terms) {
+		super.activateResult(this._resultSet[result]);
+	}
+
+	/**
+	 * Get result metadata.
+	 *
+	 * This method is called to get a `ResultMeta` for each identifier.
+	 *
+	 * @param {string[]} results - The result identifiers
+	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
+	 * @returns {Promise<ResultMeta[]>} A list of result metadata objects
+	 */
+	getResultMetas(results, cancellable = null) {
+		return new Promise((resolve, reject) => {
+			const resultMetas = [];
+			for (let identifier of results)
+				resultMetas.push(this.getResultMeta(this._resultSet[identifier]));
+			resolve(resultMetas);
+		});
+	}
+
+	/**
+	 * Initiate a new search.
+	 *
+	 * This method is called to start a new search and should return a list of
+	 * unique identifiers for the results.
+	 *
+	 * @param {string[]} terms - The search terms
+	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
+	 * @returns {Promise<string[]>} A list of result identifiers
+	 */
+	getInitialResultSet(terms, cancellable = null) {
+		let provider = this;
+
+		return new Promise((resolve, reject) => {
+			try {
+				this._resultSet = {};
+				for (let buddy of provider.searchBuddysByTerms(terms))
+					this._resultSet[buddy.buddy] = buddy;
+			} catch (e) {
+				log(e);
+			}
+			resolve(Object.keys(this._resultSet));
+		});
+	}
+
+	/**
+	 * Refine the current search.
+	 *
+	 * This method is called to refine the current search results with
+	 * expanded terms and should return a subset of the original result set.
+	 *
+	 * Implementations may use this method to refine the search results more
+	 * efficiently than running a new search, or simply pass the terms to the
+	 * implementation of `getInitialResultSet()`.
+	 *
+	 * @param {string[]} results - The original result set
+	 * @param {string[]} terms - The search terms
+	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
+	 * @returns {Promise<string[]>}
+	 */
+	getSubsearchResultSet(results, terms, cancellable = null) {
+		return this._filterBuddys(Object.values(this._resultSet), terms);
+	}
+
+	/**
+	 * Filter the current search.
+	 *
+	 * This method is called to truncate the number of search results.
+	 *
+	 * Implementations may use their own criteria for discarding results, or
+	 * simply return the first n-items.
+	 *
+	 * @param {string[]} results - The original result set
+	 * @param {number} maxResults - The maximum amount of results
+	 * @returns {string[]} The filtered results
+	 */
+	filterResults(results, maxResults) {
+		if (results.length <= maxResults)
+			return results;
+		return results.slice(0, maxResults);
+	}
+}
 
 const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
 
@@ -674,7 +830,11 @@ class PidginClient extends GObject.Object {
 
 	enableSearchProvider() {
 		if (this._searchProvider == null) {
-			this._searchProvider = new PidginSearchProvider(this);
+			let [major, minor] = Config.PACKAGE_VERSION.split('.').map(s => Number(s));
+			if (major >= 43)
+				this._searchProvider = new PidginSearchProvider(this);
+			else
+				this._searchProvider = new PidginLegacySearchProvider(this);
 		}
 		this._searchProvider.enable();
 	}
