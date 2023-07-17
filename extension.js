@@ -639,7 +639,7 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 	 * @type {string}
 	 */
 	get id() {
-		return imports.misc.extensionUtils.getCurrentExtension().uuid;
+		return ExtensionUtils.getCurrentExtension().uuid;
 	}
 
 	/**
