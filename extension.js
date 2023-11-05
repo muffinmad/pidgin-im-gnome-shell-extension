@@ -13,19 +13,19 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-const { Gio, GLib, St, Clutter, GObject } = imports.gi;
-const Config = imports.misc.config;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-const DBusIface = Me.imports.dbus;
-const Main = imports.ui.main;
-const MessageTray = imports.ui.messageTray;
-const PopupMenu = imports.ui.popupMenu;
-const TelepathyClient = imports.ui.components.telepathyClient;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
 
-function log(text) {
-	global.log('pidgin-im-gs: ' + text);
-}
+import * as DBusIface from './dbus.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as ExtensionUtils from 'resource:///org/gnome/shell/misc/extensionUtils.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as TelepathyClient from 'resource:///org/gnome/shell/ui/components/telepathyClient.js';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 function makeMessage(text, sender, timestamp, direction) {
 	text = _fixText(text);
@@ -117,7 +117,7 @@ function getStatusIcon(s) {
 }
 
 
-var Source = GObject.registerClass(
+const Source = GObject.registerClass(
 class Source extends MessageTray.Source {
 	_init(client, account, author, conversation) {
 		let proxy = client.proxy;
@@ -274,7 +274,7 @@ class Source extends MessageTray.Source {
 	}
 });
 
-var ImSource = GObject.registerClass(
+const ImSource = GObject.registerClass(
 class ImSource extends Source {
 	_init(client, account, author, conversation) {
 		super._init(client, account, author, conversation);
@@ -361,7 +361,7 @@ class ImSource extends Source {
 	}
 });
 
-var ChatSource = GObject.registerClass(
+const ChatSource = GObject.registerClass(
 class ChatSource extends Source {
 	_init(client, account, author, conversation) {
 		super._init(client, account, author, conversation);
@@ -556,6 +556,7 @@ class PidginBaseSearchProvider {
 			return this._filterBuddys(this._getBuddys(accounts), terms);
 		} catch (e) {
 			log(`PidginBaseSearchProvider::searchByTerms(${terms}): ${e}`);
+			return [];
 		}
 	}
 
@@ -570,33 +571,6 @@ class PidginBaseSearchProvider {
 
 }
 
-
-var PidginLegacySearchProvider = GObject.registerClass(
-class PidginLegacySearchProvider extends (PidginBaseSearchProvider, GObject.Object) {
-	_init(client){
-		super._init();
-		this.id = 'pidgin';
-		this._client = client;
-		this._enabled = false;
-	}
-
-	getResultMetas(result, callback) {
-		let metas = result.map(this.getResultMeta, this);
-		callback(metas);
-	}
-
-	getInitialResultSet(terms, callback, cancellable) {
-		try {
-			callback(this.searchBuddysByTerms(terms));
-		} catch (e) {
-			log(e);
-		}
-	}
-
-	getSubsearchResultSet(previousResults, terms, callback, cancellable) {
-		callback(this._filterBuddys(previousResults, terms));
-	}
-});
 
 class PidginSearchProvider extends PidginBaseSearchProvider {
 	constructor(client){
@@ -627,7 +601,7 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 	 * @type {boolean}
 	 */
 	get canLaunchSearch() {
-		return true;
+		return false;
 	}
 
 	/**
@@ -639,7 +613,7 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 	 * @type {string}
 	 */
 	get id() {
-		return ExtensionUtils.getCurrentExtension().uuid;
+		return 'pidgin@muffinmad';
 	}
 
 	/**
@@ -729,18 +703,15 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 	 * @returns {string[]} The filtered results
 	 */
 	filterResults(results, maxResults) {
-		if (results.length <= maxResults)
-			return results;
 		return results.slice(0, maxResults);
 	}
 }
 
-const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
+const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginInterface);
 
-var PidginClient = GObject.registerClass(
-class PidginClient extends GObject.Object {
-	_init() {
-		super._init();
+export default class PidginExtension extends Extension {
+	enable() {
+		log(TelepathyClient.NotificationDirection);
 		this._sources = {};
 		this._pending_messages = {};
 		this._displayedImMsgId = 0;
@@ -749,6 +720,33 @@ class PidginClient extends GObject.Object {
 		this._disable_timestamp = 0;
 		this._searchProvider = null;
 		this._messageTrayIntegration = false;
+
+		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
+		this._settings = this.getSettings();
+		this._enableMessageTrayChangeId =
+			this._settings.connect(
+				'changed::enable-message-tray',
+				this._enableMessageTrayChanged.bind(this));
+		this._enableSearchProviderChangeId =
+			this._settings.connect(
+				'changed::enable-search-provider',
+				this._enableSearchProviderChanged.bind(this));
+		this._enableSearchProviderChanged();
+		this._enableMessageTrayChanged();
+	}
+
+	disable() {
+		this.disableMessageTrayIntegration();
+		this.disableSearchProvider();
+
+		if (this._enableSearchProviderChangeId > 0) {
+			this._settings.disconnect(this._enableSearchProviderChangeId);
+		}
+		if (this._enableMessageTrayChangeId > 0) {
+			this._settings.disconnect(this._enableMessageTrayChangeId);
+		}
+		this._proxy = null;
+		this._settings = null;
 	}
 
 	_enableMessageTrayChanged() {
@@ -765,21 +763,6 @@ class PidginClient extends GObject.Object {
 		} else {
 			this.disableSearchProvider();
 		}
-	}
-
-	enable() {
-		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
-		this._settings = ExtensionUtils.getSettings();
-		this._enableMessageTrayChangeId =
-			this._settings.connect(
-				'changed::enable-message-tray',
-				this._enableMessageTrayChanged.bind(this));
-		this._enableSearchProviderChangeId =
-			this._settings.connect(
-				'changed::enable-search-provider',
-				this._enableSearchProviderChanged.bind(this));
-		this._enableSearchProviderChanged();
-		this._enableMessageTrayChanged();
 	}
 
 	enableMessageTrayIntegration() {
@@ -830,27 +813,9 @@ class PidginClient extends GObject.Object {
 
 	enableSearchProvider() {
 		if (this._searchProvider == null) {
-			let [major, minor] = Config.PACKAGE_VERSION.split('.').map(s => Number(s));
-			if (major >= 43)
-				this._searchProvider = new PidginSearchProvider(this);
-			else
-				this._searchProvider = new PidginLegacySearchProvider(this);
+			this._searchProvider = new PidginSearchProvider(this);
 		}
 		this._searchProvider.enable();
-	}
-
-	disable() {
-		this.disableMessageTrayIntegration();
-		this.disableSearchProvider();
-
-		if (this._enableSearchProviderChangeId > 0) {
-			this._settings.disconnect(this._enableSearchProviderChangeId);
-		}
-		if (this._enableMessageTrayChangeId > 0) {
-			this._settings.disconnect(this._enableMessageTrayChangeId);
-		}
-		this._proxy = null;
-		this._settings = null;
 	}
 
 	disableMessageTrayIntegration() {
@@ -963,8 +928,4 @@ class PidginClient extends GObject.Object {
 	_messageDisplayedChat(emitter, something, details){
 		this._messageDisplayed(details, true);
 	}
-});
-
-function init() {
-	return new PidginClient();
-}
+};
