@@ -27,11 +27,13 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as TelepathyClient from 'resource:///org/gnome/shell/ui/components/telepathyClient.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+const NotificationDirection = {SENT: 'chat-sent', RECEIVED: 'chat-received'};
+
 function makeMessage(text, sender, timestamp, direction) {
 	text = _fixText(text);
 
 	let type = 0; // TelepathyGLib.ChannelTextMessageType.NORMAL;
-	if (text.substr(0, 4) == '/me ' && direction != TelepathyClient.NotificationDirection.SENT) {
+	if (text.substr(0, 4) == '/me ' && direction != NotificationDirection.SENT) {
 		text = text.substr(4);
 		type = 1; // TelepathyGLib.ChannelTextMessageType.ACTION;
 	}
@@ -173,9 +175,9 @@ class Source extends MessageTray.Source {
 	handleMessage(author, text, flag, timestamp) {
 		let direction = null;
 		if (flag & 1) {
-			direction = TelepathyClient.NotificationDirection.SENT;
+			direction = NotificationDirection.SENT;
 		} else if (flag & 2) {
-			direction = TelepathyClient.NotificationDirection.RECEIVED;
+			direction = NotificationDirection.RECEIVED;
 		} else {
 			return;
 		}
@@ -185,7 +187,7 @@ class Source extends MessageTray.Source {
 		let message = this._makeMessage(author, text, _ts, direction);
 		this._notification.appendMessage(message, false);
 
-		if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
+		if (direction == NotificationDirection.RECEIVED) {
 			let focus = this._client.proxy.PurpleConversationHasFocusSync(this._conversation);
 			if ((!focus || focus == 0) && (_ts >= this._client.disable_timestamp && (this._client.disable_timestamp > 0 || timestamp == null))) {
 				this._pendingMessages.push(message);
@@ -381,7 +383,7 @@ class ChatSource extends Source {
 	}
 
 	_makeMessage(author, text, _ts, direction) {
-		if(direction ==  TelepathyClient.NotificationDirection.RECEIVED &&
+		if(direction ==  NotificationDirection.RECEIVED &&
 				this._cbNames[author] == undefined){
 			let proxy = this._client.proxy;
 			let buddy = proxy.PurpleFindBuddySync(this._account, author);
@@ -395,9 +397,9 @@ class ChatSource extends Source {
 
 		var author_nick = null;
 
-		if (direction == TelepathyClient.NotificationDirection.SENT) {
+		if (direction == NotificationDirection.SENT) {
 			author_nick = "me";
-		} else if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
+		} else if (direction == NotificationDirection.RECEIVED) {
 			author_nick = this._cbNames[author];
 		} else
 			author_nick = "";
@@ -406,12 +408,12 @@ class ChatSource extends Source {
 	}
 });
 
-class PidginBaseSearchProvider {
+class PidginSearchProvider {
 
-	_init(client){
-		super._init();
+	constructor(client){
 		this._client = client;
 		this._enabled = false;
+		this._resultSet = [];
 	}
 
 	enable() {
@@ -435,6 +437,18 @@ class PidginBaseSearchProvider {
 			}
 			this._enabled = false;
 		}
+	}
+
+	get appInfo() {
+		return null;
+	}
+
+	get canLaunchSearch() {
+		return false;
+	}
+
+	get id() {
+		return 'pidgin@muffinmad';
 	}
 
 	_createIconForBuddy(buddy, status_code, iconSize) {
@@ -481,6 +495,15 @@ class PidginBaseSearchProvider {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
 			}
 		};
+	}
+
+	getResultMetas(results, cancellable = null) {
+		return new Promise((resolve, reject) => {
+			const resultMetas = [];
+			for (let identifier of results)
+				resultMetas.push(this.getResultMeta(this._resultSet[identifier]));
+			resolve(resultMetas);
+		});
 	}
 
 	filterResults(results, maxResults) {
@@ -560,102 +583,16 @@ class PidginBaseSearchProvider {
 		}
 	}
 
-	activateResult(result) {
+	activateResult(result, terms) {
 		let p = this._client.proxy;
+		let buddy = this._resultSet[result];
 		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
 			1,
-			p.PurpleBuddyGetAccountSync(result),
-			p.PurpleBuddyGetNameSync(result).toString()
+			p.PurpleBuddyGetAccountSync(buddy),
+			p.PurpleBuddyGetNameSync(buddy).toString()
 		));
 	}
 
-}
-
-
-class PidginSearchProvider extends PidginBaseSearchProvider {
-	constructor(client){
-		super();
-		this._client = client;
-		this._enabled = false;
-		this._resultSet = [];
-	}
-
-	/**
-	 * The application of the provider.
-	 *
-	 * Applications will return a `Gio.AppInfo` representing themselves.
-	 * Extensions will usually return `null`.
-	 *
-	 * @type {Gio.AppInfo}
-	 */
-	get appInfo() {
-		return null;
-	}
-
-	/**
-	 * Whether the provider offers detailed results.
-	 *
-	 * Applications will return `true` if they have a way to display more
-	 * detailed or complete results. Extensions will usually return `false`.
-	 *
-	 * @type {boolean}
-	 */
-	get canLaunchSearch() {
-		return false;
-	}
-
-	/**
-	 * The unique ID of the provider.
-	 *
-	 * Applications will return their application ID. Extensions will usually
-	 * return their UUID.
-	 *
-	 * @type {string}
-	 */
-	get id() {
-		return 'pidgin@muffinmad';
-	}
-
-	/**
-	 * Launch the search result.
-	 *
-	 * This method is called when a search provider result is activated.
-	 *
-	 * @param {string} result - The result identifier
-	 * @param {string[]} terms - The search terms
-	 */
-	activateResult(result, terms) {
-		super.activateResult(this._resultSet[result]);
-	}
-
-	/**
-	 * Get result metadata.
-	 *
-	 * This method is called to get a `ResultMeta` for each identifier.
-	 *
-	 * @param {string[]} results - The result identifiers
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<ResultMeta[]>} A list of result metadata objects
-	 */
-	getResultMetas(results, cancellable = null) {
-		return new Promise((resolve, reject) => {
-			const resultMetas = [];
-			for (let identifier of results)
-				resultMetas.push(this.getResultMeta(this._resultSet[identifier]));
-			resolve(resultMetas);
-		});
-	}
-
-	/**
-	 * Initiate a new search.
-	 *
-	 * This method is called to start a new search and should return a list of
-	 * unique identifiers for the results.
-	 *
-	 * @param {string[]} terms - The search terms
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<string[]>} A list of result identifiers
-	 */
 	getInitialResultSet(terms, cancellable = null) {
 		let provider = this;
 
@@ -671,37 +608,10 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 		});
 	}
 
-	/**
-	 * Refine the current search.
-	 *
-	 * This method is called to refine the current search results with
-	 * expanded terms and should return a subset of the original result set.
-	 *
-	 * Implementations may use this method to refine the search results more
-	 * efficiently than running a new search, or simply pass the terms to the
-	 * implementation of `getInitialResultSet()`.
-	 *
-	 * @param {string[]} results - The original result set
-	 * @param {string[]} terms - The search terms
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<string[]>}
-	 */
 	getSubsearchResultSet(results, terms, cancellable = null) {
 		return this._filterBuddys(Object.values(this._resultSet), terms);
 	}
 
-	/**
-	 * Filter the current search.
-	 *
-	 * This method is called to truncate the number of search results.
-	 *
-	 * Implementations may use their own criteria for discarding results, or
-	 * simply return the first n-items.
-	 *
-	 * @param {string[]} results - The original result set
-	 * @param {number} maxResults - The maximum amount of results
-	 * @returns {string[]} The filtered results
-	 */
 	filterResults(results, maxResults) {
 		return results.slice(0, maxResults);
 	}
@@ -711,7 +621,6 @@ const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginInterface);
 
 export default class PidginExtension extends Extension {
 	enable() {
-		log(TelepathyClient.NotificationDirection);
 		this._sources = {};
 		this._pending_messages = {};
 		this._displayedImMsgId = 0;
