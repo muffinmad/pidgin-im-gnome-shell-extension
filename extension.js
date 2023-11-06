@@ -21,21 +21,35 @@ import GObject from 'gi://GObject';
 
 import * as DBusIface from './dbus.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as ExtensionUtils from 'resource:///org/gnome/shell/misc/extensionUtils.js';
+import * as Params from 'resource:///org/gnome/shell/misc/params.js';
+import * as History from 'resource:///org/gnome/shell/misc/history.js';
+import * as Util from 'resource:///org/gnome/shell/misc/util.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as TelepathyClient from 'resource:///org/gnome/shell/ui/components/telepathyClient.js';
+import * as MessageList from 'resource:///org/gnome/shell/ui/messageList.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+const SCROLLBACK_IMMEDIATE_TIME = 3 * 60;
+const SCROLLBACK_RECENT_TIME = 15 * 60;
+const SCROLLBACK_RECENT_LENGTH = 20;
+const SCROLLBACK_IDLE_LENGTH = 5;
+
+const SCROLLBACK_HISTORY_LINES = 10;
+
+const COMPOSING_STOP_TIMEOUT = 5;
+
+const CHAT_EXPAND_LINES = 12;
+
 const NotificationDirection = {SENT: 'chat-sent', RECEIVED: 'chat-received'};
+const MessageType = {NORMAL: 0, ACTION: 1};
+const ChannelChatState = {ACTIVE: 2, PAUSED: 3, COMPOSING: 4};
 
 function makeMessage(text, sender, timestamp, direction) {
 	text = _fixText(text);
 
-	let type = 0; // TelepathyGLib.ChannelTextMessageType.NORMAL;
+	let type = MessageType.NORMAL;
 	if (text.substr(0, 4) == '/me ' && direction != NotificationDirection.SENT) {
 		text = text.substr(4);
-		type = 1; // TelepathyGLib.ChannelTextMessageType.ACTION;
+		type = MessageType.ACTION;
 	}
 
 	return {
@@ -118,6 +132,300 @@ function getStatusIcon(s) {
 	return new Gio.ThemedIcon({name: iconName});
 }
 
+const ChatNotificationMessage = GObject.registerClass(
+class ChatNotificationMessage extends GObject.Object {
+	_init(props = {}) {
+		super._init();
+		this.set(props);
+	}
+});
+
+const ChatNotification = GObject.registerClass({
+	Signals: {
+		'message-removed': {param_types: [ChatNotificationMessage.$gtype]},
+		'message-added': {param_types: [ChatNotificationMessage.$gtype]},
+		'timestamp-changed': {param_types: [ChatNotificationMessage.$gtype]},
+	}
+}, class ChatNotification extends MessageTray.Notification {
+	_init(source) {
+		super._init(source, source.title, null, {secondaryGIcon: source.getSecondaryIcon()});
+		this.setUrgency(MessageTray.Urgency.HIGH);
+		this.setResident(true);
+
+		this.messages = [];
+		this._timestampTimeoutId = 0;
+	}
+
+	destroy(reason) {
+		if (this._timestampTimeoutId) {
+			GLib.source_remove(this._timestampTimeoutId);
+		}
+		this._timestampTimeoutId = 0;
+		super.destroy(reason);
+	}
+
+	appendMessage(message, noTimestamp) {
+		let body = GLib.markup_escape_text(message.text, -1);
+		let styles = [message.direction];
+
+		if (message.messageType === MessageType.ACTION) {
+			let sender = GLib.markup_escape_text(message.sender, -1);
+			body = `<i>${sender}</i> ${body}`;
+			styles.push('chat-action');
+		}
+
+		if (message.direction === NotificationDirection.RECEIVED) {
+			this.update(this.source.title, body, {
+				datetime: GLib.DateTime.new_from_unix_local(message.timestamp),
+				bannerMarkup: true,
+			});
+		}
+
+		let group = message.direction === NotificationDirection.RECEIVED ? 'received' : 'sent';
+		this._append({
+			body,
+			group,
+			styles,
+			timestamp: message.timestamp,
+			noTimestamp
+		});
+	}
+
+	_filterMessages() {
+		if (this.messages.length < 1) return;
+
+		let lastMessageTime = this.messages[0].timestamp;
+		let currentTime = Date.now() / 1000;
+		let maxLength = lastMessageTime < currentTime - SCROLLBACK_RECENT_TIME
+			? SCROLLBACK_IDLE_LENGTH : SCROLLBACK_RECENT_LENGTH;
+		let filteredHistory = this.messages.filter(item => item.realMessage);
+		if (filteredHistory.length > maxLength) {
+			let toKeep = filteredHistory[maxLength];
+			let expired = this.messages.splice(this.messages.indexOf(toKeep));
+			for (let i = 0; i < expired.length; i++) {
+				this.emit('message-removed', expired[i]);
+			}
+		}
+	}
+
+	_append(props) {
+		let currentTime = Date.now() / 1000;
+		props = Params.parse(props, {
+			body: null,
+			group: null,
+			styles: [],
+			timestamp: currentTime,
+			noTimestamp: false
+		});
+		const {noTimestamp} = props;
+		delete props.noTimestamp;
+
+		if (this._timestampTimeoutId) GLib.source_remove(this._timestampTimeoutId);
+		this._timestampTimeoutId = 0;
+
+		let message = new ChatNotificationMessage({
+			relaMessage: props.group !== 'meta',
+			showTimestamp: false,
+			...props,
+		});
+
+		this.messages.unshift(message);
+		this.emit('message-added', message);
+
+		if (!noTimestamp) {
+			let timestamp = props.timestamp;
+			if (timestamp < currentTime - SCROLLBACK_IMMEDIATE_TIME) {
+				this.appendTimestamp();
+			} else {
+				this._timestampTimeoutId = GLib.timeout_add_seconds(
+					GLib.PRIORITY_DEFAULT,
+					SCROLLBACK_IMMEDIATE_TIME - (currentTime - timestamp),
+					this.appendTimestamp.bind(this)
+				);
+				GLib.Source.set_name_by_id(this._timestampTimeoutId, '[gnome-shell] this.appendTimestamp');
+			}
+		}
+
+		this._filterMessages();
+	}
+
+	appendTimestamp() {
+		this._timestampTimeoutId = 0;
+		this.messages[0].showTimestamp = true;
+		this.emit('timestamp-changed', this.messages[0]);
+		this._filterMessages();
+		return GLib.SOURCE_REMOVE;
+	}
+});
+
+const ChatLineBox = GObject.registerClass(
+class ChatLineBox extends St.BoxLayout {
+	vfunc_get_preferred_height(forWidth) {
+		let [, natHeight] = super.vfunc_get_preferred_height(forWidth);
+		return [natHeight, natHeight];
+	}
+});
+
+const ChatNotificationBanner = GObject.registerClass(
+class ChatNotificationBanner extends MessageTray.NotificationBanner {
+	_init(notification) {
+		super._init(notification);
+		this._responseEntry = new St.Entry({
+			style_class: 'chat-response',
+			x_expand: true,
+			can_focus: true
+		});
+		let clutter_text = this._responseEntry.clutter_text;
+		clutter_text.connect('activate', this._onEntryActivated.bind(this));
+		clutter_text.connect('text-changed', this._onEntryChanged.bind(this));
+		this.setActionArea(this._responseEntry);
+		clutter_text.connect('key-focus-in', () => { this.focused = true; });
+		clutter_text.connect('key-focus-out', () => {
+			this.focused = false;
+			this.emit('unfocused');
+		});
+
+		this._scrollArea = new St.ScrollView({
+			style_class: 'chat-scrollview vfade',
+			vscrollbar_policy: St.PolicyType.AUTOMATIC,
+			hscrollbar_policy: St.PolicyType.NEVER,
+			visible: this.expanded
+		});
+		this._contentArea = new St.BoxLayout({
+			style_class: 'chat-body',
+			vertical: true
+		});
+		this._scrollArea.add_actor(this._contentArea);
+
+		this.setExpandedBody(this._scrollArea);
+		this.setExpandedLines(CHAT_EXPAND_LINES);
+
+		this._lastGroup = null;
+
+		this._oldMaxScrollValue = this._scrollArea.vscroll.adjustment.value;
+		this._scrollArea.vscroll.adjustment.connect('changed', adjustment => {
+			if (adjustment.value === this._oldMaxScrollValue) {
+				this.scrollTo(St.Side.BOTTOM);
+			}
+			this._oldMaxScrollValue = Math.max(
+				adjustment.lower, adjustment.upper - adjustment.page_size
+			);
+		});
+
+		this._inputHistory = new History.HistoryManager({entry: clutter_text});
+		this._composingTimeoutId = 0;
+		this._messageActors = new Map();
+
+		this.notification.connectObject(
+			'timestamp-changed', (n, message) => this._updateTimestamp(message),
+			'message-added', (n, message) => this._addMessage(message),
+			'message-removed', (n, message) => {
+				let actor = this._messageActors.get(message);
+				if (this._messageActors.delete(message)) {
+					actor.destroy();
+				}
+			},
+			this
+		);
+
+		for (let i = this.notification.messages.length - 1; i >= 0; i--) {
+			this._addMessage(this.notification.messages[i]);
+		}
+	}
+
+	scrollTo(side) {
+		let adjustment = this._scrollArea.vscroll.adjustment;
+		if (side === St.Side.TOP) {
+			adjustment.value = adjustment.lower;
+		} else if (side === St.Side.BOTTOM) {
+			adjustment.value = adjustment.upper;
+		}
+	}
+
+	hide() {
+		this.emit('done-displaying');
+	}
+
+	_addMessage(message) {
+		let body = new MessageList.URLHighlighter(message.body, true, true);
+		let styles = message.styles;
+		for (let i = 0; i < styles.length; i++) {
+			body.add_style_class_name(styles[i]);
+		}
+
+		let group = message.group;
+		if (group !== this._lastGroup) {
+			this._lastGroup = group;
+			body.add_style_class_name('chat-new-group');
+		}
+
+		let lineBox = new ChatLineBox();
+		lineBox.add(body);
+		this._contentArea.add_actor(lineBox);
+		this._messageActors.set(message, lineBox);
+
+		this._updateTimestamp(message);
+	}
+
+	_updateTimestamp(message) {
+		let actor = this._messageActors.get(message);
+		if (!actor) return;
+
+		while (actor.get_n_children() > 1) {
+			actor.get_child_at_index(1).destroy();
+		}
+		if (message.showTimestamp) {
+			let messageTime = message.timestamp;
+			let messageDate = new Date(messageTime * 1000);
+			let timeLabel = Util.createTimeLabel(messageDate);
+			timeLabel.style_class = 'chat-meta-message';
+			timeLabel.x_expand = true;
+			timeLabel.y_expand = true;
+			timeLabel.x_align = Clutter.ActorAlign.END;
+			timeLabel.y_align = Clutter.ActorAlign.END;
+			actor.add_actor(timeLabel);
+		}
+	}
+
+	_onEntryActivated() {
+		let text = this._responseEntry.get_text();
+		if (text === '') return;
+
+		this._inputHistory.addItem(text);
+
+		this._responseEntry.set_text('');
+		this.notification.source.respond(text);
+	}
+
+	_composingStopTimeout() {
+		this._composingTimeoutId = 0;
+		this.notification.source.setChatState(ChannelChatState.PAUSED);
+		return GLib.SOURCE_REMOVE;
+	}
+
+	_onEntryChanged() {
+		let text = this._responseEntry.get_text();
+
+		if (this._composingTimeoutId > 0) {
+			GLib.source_remove(this._composingTimeoutId);
+			this._composingTimeoutId = 0;
+		}
+
+		if (text === '') {
+			this.notification.source.setChatState(ChannelChatState.ACTIVE);
+		} else {
+			this.notification.source.setChatState(ChannelChatState.COMPOSING);
+			this._composingTimeoutId = GLib.timeout_add_seconds(
+				GLib.PRIORITY_DEFAULT,
+				COMPOSING_STOP_TIMEOUT,
+				this._composingStopTimeout.bind(this)
+			);
+			GLib.Source.set_name_by_id(
+				this._composingTimeoutId, '[gnome-shell] this._composingStopTimeout'
+			);
+		}
+	}
+});
 
 const Source = GObject.registerClass(
 class Source extends MessageTray.Source {
@@ -136,7 +444,7 @@ class Source extends MessageTray.Source {
 		this.isChat = true;
 		this._pendingMessages = [];
 
-		this._notification = new TelepathyClient.ChatNotification(this);
+		this._notification = new ChatNotification(this);
 		this._notification.connect('activated', this.open.bind(this));
 		this._notification.connect('updated', () => {
 			if (this._banner && this._banner.expanded) this._markAllSeen();
@@ -160,17 +468,17 @@ class Source extends MessageTray.Source {
 	}
 
 	createBanner() {
-        this._banner = new TelepathyClient.ChatNotificationBanner(this._notification);
+		this._banner = new ChatNotificationBanner(this._notification);
 
-        // We ack messages when the user expands the new notification
-        let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
-        this._banner.connect('destroy', () => {
-            this._banner.disconnect(id);
-            this._banner = null;
-        });
+		// We ack messages when the user expands the new notification
+		let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
+		this._banner.connect('destroy', () => {
+			this._banner.disconnect(id);
+			this._banner = null;
+		});
 
-        return this._banner;
-    }
+		return this._banner;
+	}
 
 	handleMessage(author, text, flag, timestamp) {
 		let direction = null;
@@ -208,10 +516,10 @@ class Source extends MessageTray.Source {
 		this._chatState = state;
 		let s = 0;
 		switch (state) {
-			case 4:
+			case ChannelChatState.COMPOSING:
 				s = 1;
 				break;
-			case 3:
+			case ChannelChatState.PAUSED:
 				s = 2;
 				break;
 		}
@@ -383,7 +691,7 @@ class ChatSource extends Source {
 	}
 
 	_makeMessage(author, text, _ts, direction) {
-		if(direction ==  NotificationDirection.RECEIVED &&
+		if(direction == NotificationDirection.RECEIVED &&
 				this._cbNames[author] == undefined){
 			let proxy = this._client.proxy;
 			let buddy = proxy.PurpleFindBuddySync(this._account, author);
@@ -404,7 +712,7 @@ class ChatSource extends Source {
 		} else
 			author_nick = "";
 
-		return makeMessage('['+author_nick+']: ' + text, author, _ts, direction);
+		return makeMessage('[' + author_nick + ']: ' + text, author, _ts, direction);
 	}
 });
 
