@@ -13,27 +13,43 @@
 	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-const { Gio, GLib, St, Clutter, GObject } = imports.gi;
-const Config = imports.misc.config;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-const DBusIface = Me.imports.dbus;
-const Main = imports.ui.main;
-const MessageTray = imports.ui.messageTray;
-const PopupMenu = imports.ui.popupMenu;
-const TelepathyClient = imports.ui.components.telepathyClient;
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
 
-function log(text) {
-	global.log('pidgin-im-gs: ' + text);
-}
+import * as DBusIface from './dbus.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Params from 'resource:///org/gnome/shell/misc/params.js';
+import * as History from 'resource:///org/gnome/shell/misc/history.js';
+import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
+import * as MessageList from 'resource:///org/gnome/shell/ui/messageList.js';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+const SCROLLBACK_IMMEDIATE_TIME = 3 * 60;
+const SCROLLBACK_RECENT_TIME = 15 * 60;
+const SCROLLBACK_RECENT_LENGTH = 20;
+const SCROLLBACK_IDLE_LENGTH = 5;
+
+const SCROLLBACK_HISTORY_LINES = 10;
+
+const COMPOSING_STOP_TIMEOUT = 5;
+
+const CHAT_EXPAND_LINES = 12;
+
+const NotificationDirection = {SENT: 'chat-sent', RECEIVED: 'chat-received'};
+const MessageType = {NORMAL: 0, ACTION: 1};
+const ChannelChatState = {ACTIVE: 2, PAUSED: 3, COMPOSING: 4};
 
 function makeMessage(text, sender, timestamp, direction) {
 	text = _fixText(text);
 
-	let type = 0; // TelepathyGLib.ChannelTextMessageType.NORMAL;
-	if (text.substr(0, 4) == '/me ' && direction != TelepathyClient.NotificationDirection.SENT) {
+	let type = MessageType.NORMAL;
+	if (text.substr(0, 4) == '/me ' && direction != NotificationDirection.SENT) {
 		text = text.substr(4);
-		type = 1; // TelepathyGLib.ChannelTextMessageType.ACTION;
+		type = MessageType.ACTION;
 	}
 
 	return {
@@ -116,8 +132,302 @@ function getStatusIcon(s) {
 	return new Gio.ThemedIcon({name: iconName});
 }
 
+const ChatNotificationMessage = GObject.registerClass(
+class ChatNotificationMessage extends GObject.Object {
+	_init(props = {}) {
+		super._init();
+		this.set(props);
+	}
+});
 
-var Source = GObject.registerClass(
+const ChatNotification = GObject.registerClass({
+	Signals: {
+		'message-removed': {param_types: [ChatNotificationMessage.$gtype]},
+		'message-added': {param_types: [ChatNotificationMessage.$gtype]},
+		'timestamp-changed': {param_types: [ChatNotificationMessage.$gtype]},
+	}
+}, class ChatNotification extends MessageTray.Notification {
+	_init(source) {
+		super._init(source, source.title, null, {secondaryGIcon: source.getSecondaryIcon()});
+		this.setUrgency(MessageTray.Urgency.HIGH);
+		this.setResident(true);
+
+		this.messages = [];
+		this._timestampTimeoutId = 0;
+	}
+
+	destroy(reason) {
+		if (this._timestampTimeoutId) {
+			GLib.source_remove(this._timestampTimeoutId);
+		}
+		this._timestampTimeoutId = 0;
+		super.destroy(reason);
+	}
+
+	appendMessage(message, noTimestamp) {
+		let body = GLib.markup_escape_text(message.text, -1);
+		let styles = [message.direction];
+
+		if (message.messageType === MessageType.ACTION) {
+			let sender = GLib.markup_escape_text(message.sender, -1);
+			body = `<i>${sender}</i> ${body}`;
+			styles.push('chat-action');
+		}
+
+		if (message.direction === NotificationDirection.RECEIVED) {
+			this.update(this.source.title, body, {
+				datetime: GLib.DateTime.new_from_unix_local(message.timestamp),
+				bannerMarkup: true,
+			});
+		}
+
+		let group = message.direction === NotificationDirection.RECEIVED ? 'received' : 'sent';
+		this._append({
+			body,
+			group,
+			styles,
+			timestamp: message.timestamp,
+			noTimestamp
+		});
+	}
+
+	_filterMessages() {
+		if (this.messages.length < 1) return;
+
+		let lastMessageTime = this.messages[0].timestamp;
+		let currentTime = Date.now() / 1000;
+		let maxLength = lastMessageTime < currentTime - SCROLLBACK_RECENT_TIME
+			? SCROLLBACK_IDLE_LENGTH : SCROLLBACK_RECENT_LENGTH;
+		let filteredHistory = this.messages.filter(item => item.realMessage);
+		if (filteredHistory.length > maxLength) {
+			let toKeep = filteredHistory[maxLength];
+			let expired = this.messages.splice(this.messages.indexOf(toKeep));
+			for (let i = 0; i < expired.length; i++) {
+				this.emit('message-removed', expired[i]);
+			}
+		}
+	}
+
+	_append(props) {
+		let currentTime = Date.now() / 1000;
+		props = Params.parse(props, {
+			body: null,
+			group: null,
+			styles: [],
+			timestamp: currentTime,
+			noTimestamp: false
+		});
+		const {noTimestamp} = props;
+		delete props.noTimestamp;
+
+		if (this._timestampTimeoutId) GLib.source_remove(this._timestampTimeoutId);
+		this._timestampTimeoutId = 0;
+
+		let message = new ChatNotificationMessage({
+			relaMessage: props.group !== 'meta',
+			showTimestamp: false,
+			...props,
+		});
+
+		this.messages.unshift(message);
+		this.emit('message-added', message);
+
+		if (!noTimestamp) {
+			let timestamp = props.timestamp;
+			if (timestamp < currentTime - SCROLLBACK_IMMEDIATE_TIME) {
+				this.appendTimestamp();
+			} else {
+				this._timestampTimeoutId = GLib.timeout_add_seconds(
+					GLib.PRIORITY_DEFAULT,
+					SCROLLBACK_IMMEDIATE_TIME - (currentTime - timestamp),
+					this.appendTimestamp.bind(this)
+				);
+				GLib.Source.set_name_by_id(this._timestampTimeoutId, '[gnome-shell] this.appendTimestamp');
+			}
+		}
+
+		this._filterMessages();
+	}
+
+	appendTimestamp() {
+		this._timestampTimeoutId = 0;
+		this.messages[0].showTimestamp = true;
+		this.emit('timestamp-changed', this.messages[0]);
+		this._filterMessages();
+		return GLib.SOURCE_REMOVE;
+	}
+});
+
+const ChatLineBox = GObject.registerClass(
+class ChatLineBox extends St.BoxLayout {
+	vfunc_get_preferred_height(forWidth) {
+		let [, natHeight] = super.vfunc_get_preferred_height(forWidth);
+		return [natHeight, natHeight];
+	}
+});
+
+const ChatNotificationBanner = GObject.registerClass(
+class ChatNotificationBanner extends MessageTray.NotificationBanner {
+	_init(notification) {
+		super._init(notification);
+		this._responseEntry = new St.Entry({
+			style_class: 'chat-response',
+			x_expand: true,
+			can_focus: true
+		});
+		let clutter_text = this._responseEntry.clutter_text;
+		clutter_text.connect('activate', this._onEntryActivated.bind(this));
+		clutter_text.connect('text-changed', this._onEntryChanged.bind(this));
+		this.setActionArea(this._responseEntry);
+		clutter_text.connect('key-focus-in', () => { this.focused = true; });
+		clutter_text.connect('key-focus-out', () => {
+			this.focused = false;
+			this.emit('unfocused');
+		});
+
+		this._scrollArea = new St.ScrollView({
+			style_class: 'chat-scrollview vfade',
+			vscrollbar_policy: St.PolicyType.AUTOMATIC,
+			hscrollbar_policy: St.PolicyType.NEVER,
+			visible: this.expanded
+		});
+		this._contentArea = new St.BoxLayout({
+			style_class: 'chat-body',
+			vertical: true
+		});
+		this._scrollArea.add_actor(this._contentArea);
+
+		this.setExpandedBody(this._scrollArea);
+		this.setExpandedLines(CHAT_EXPAND_LINES);
+
+		this._lastGroup = null;
+
+		this._oldMaxScrollValue = this._scrollArea.vscroll.adjustment.value;
+		this._scrollArea.vscroll.adjustment.connect('changed', adjustment => {
+			if (adjustment.value === this._oldMaxScrollValue) {
+				this.scrollTo(St.Side.BOTTOM);
+			}
+			this._oldMaxScrollValue = Math.max(
+				adjustment.lower, adjustment.upper - adjustment.page_size
+			);
+		});
+
+		this._inputHistory = new History.HistoryManager({entry: clutter_text});
+		this._composingTimeoutId = 0;
+		this._messageActors = new Map();
+
+		this.notification.connectObject(
+			'timestamp-changed', (n, message) => this._updateTimestamp(message),
+			'message-added', (n, message) => this._addMessage(message),
+			'message-removed', (n, message) => {
+				let actor = this._messageActors.get(message);
+				if (this._messageActors.delete(message)) {
+					actor.destroy();
+				}
+			},
+			this
+		);
+
+		for (let i = this.notification.messages.length - 1; i >= 0; i--) {
+			this._addMessage(this.notification.messages[i]);
+		}
+	}
+
+	scrollTo(side) {
+		let adjustment = this._scrollArea.vscroll.adjustment;
+		if (side === St.Side.TOP) {
+			adjustment.value = adjustment.lower;
+		} else if (side === St.Side.BOTTOM) {
+			adjustment.value = adjustment.upper;
+		}
+	}
+
+	hide() {
+		this.emit('done-displaying');
+	}
+
+	_addMessage(message) {
+		let body = new MessageList.URLHighlighter(message.body, true, true);
+		let styles = message.styles;
+		for (let i = 0; i < styles.length; i++) {
+			body.add_style_class_name(styles[i]);
+		}
+
+		let group = message.group;
+		if (group !== this._lastGroup) {
+			this._lastGroup = group;
+			body.add_style_class_name('chat-new-group');
+		}
+
+		let lineBox = new ChatLineBox();
+		lineBox.add(body);
+		this._contentArea.add_actor(lineBox);
+		this._messageActors.set(message, lineBox);
+
+		this._updateTimestamp(message);
+	}
+
+	_updateTimestamp(message) {
+		let actor = this._messageActors.get(message);
+		if (!actor) return;
+
+		while (actor.get_n_children() > 1) {
+			actor.get_child_at_index(1).destroy();
+		}
+		if (message.showTimestamp) {
+			let messageTime = message.timestamp;
+			let messageDate = new Date(messageTime * 1000);
+			let timeLabel = Util.createTimeLabel(messageDate);
+			timeLabel.style_class = 'chat-meta-message';
+			timeLabel.x_expand = true;
+			timeLabel.y_expand = true;
+			timeLabel.x_align = Clutter.ActorAlign.END;
+			timeLabel.y_align = Clutter.ActorAlign.END;
+			actor.add_actor(timeLabel);
+		}
+	}
+
+	_onEntryActivated() {
+		let text = this._responseEntry.get_text();
+		if (text === '') return;
+
+		this._inputHistory.addItem(text);
+
+		this._responseEntry.set_text('');
+		this.notification.source.respond(text);
+	}
+
+	_composingStopTimeout() {
+		this._composingTimeoutId = 0;
+		this.notification.source.setChatState(ChannelChatState.PAUSED);
+		return GLib.SOURCE_REMOVE;
+	}
+
+	_onEntryChanged() {
+		let text = this._responseEntry.get_text();
+
+		if (this._composingTimeoutId > 0) {
+			GLib.source_remove(this._composingTimeoutId);
+			this._composingTimeoutId = 0;
+		}
+
+		if (text === '') {
+			this.notification.source.setChatState(ChannelChatState.ACTIVE);
+		} else {
+			this.notification.source.setChatState(ChannelChatState.COMPOSING);
+			this._composingTimeoutId = GLib.timeout_add_seconds(
+				GLib.PRIORITY_DEFAULT,
+				COMPOSING_STOP_TIMEOUT,
+				this._composingStopTimeout.bind(this)
+			);
+			GLib.Source.set_name_by_id(
+				this._composingTimeoutId, '[gnome-shell] this._composingStopTimeout'
+			);
+		}
+	}
+});
+
+const Source = GObject.registerClass(
 class Source extends MessageTray.Source {
 	_init(client, account, author, conversation) {
 		let proxy = client.proxy;
@@ -134,7 +444,7 @@ class Source extends MessageTray.Source {
 		this.isChat = true;
 		this._pendingMessages = [];
 
-		this._notification = new TelepathyClient.ChatNotification(this);
+		this._notification = new ChatNotification(this);
 		this._notification.connect('activated', this.open.bind(this));
 		this._notification.connect('updated', () => {
 			if (this._banner && this._banner.expanded) this._markAllSeen();
@@ -158,24 +468,24 @@ class Source extends MessageTray.Source {
 	}
 
 	createBanner() {
-        this._banner = new TelepathyClient.ChatNotificationBanner(this._notification);
+		this._banner = new ChatNotificationBanner(this._notification);
 
-        // We ack messages when the user expands the new notification
-        let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
-        this._banner.connect('destroy', () => {
-            this._banner.disconnect(id);
-            this._banner = null;
-        });
+		// We ack messages when the user expands the new notification
+		let id = this._banner.connect('expanded', this._markAllSeen.bind(this));
+		this._banner.connect('destroy', () => {
+			this._banner.disconnect(id);
+			this._banner = null;
+		});
 
-        return this._banner;
-    }
+		return this._banner;
+	}
 
 	handleMessage(author, text, flag, timestamp) {
 		let direction = null;
 		if (flag & 1) {
-			direction = TelepathyClient.NotificationDirection.SENT;
+			direction = NotificationDirection.SENT;
 		} else if (flag & 2) {
-			direction = TelepathyClient.NotificationDirection.RECEIVED;
+			direction = NotificationDirection.RECEIVED;
 		} else {
 			return;
 		}
@@ -185,7 +495,7 @@ class Source extends MessageTray.Source {
 		let message = this._makeMessage(author, text, _ts, direction);
 		this._notification.appendMessage(message, false);
 
-		if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
+		if (direction == NotificationDirection.RECEIVED) {
 			let focus = this._client.proxy.PurpleConversationHasFocusSync(this._conversation);
 			if ((!focus || focus == 0) && (_ts >= this._client.disable_timestamp && (this._client.disable_timestamp > 0 || timestamp == null))) {
 				this._pendingMessages.push(message);
@@ -206,10 +516,10 @@ class Source extends MessageTray.Source {
 		this._chatState = state;
 		let s = 0;
 		switch (state) {
-			case 4:
+			case ChannelChatState.COMPOSING:
 				s = 1;
 				break;
-			case 3:
+			case ChannelChatState.PAUSED:
 				s = 2;
 				break;
 		}
@@ -274,7 +584,7 @@ class Source extends MessageTray.Source {
 	}
 });
 
-var ImSource = GObject.registerClass(
+const ImSource = GObject.registerClass(
 class ImSource extends Source {
 	_init(client, account, author, conversation) {
 		super._init(client, account, author, conversation);
@@ -361,7 +671,7 @@ class ImSource extends Source {
 	}
 });
 
-var ChatSource = GObject.registerClass(
+const ChatSource = GObject.registerClass(
 class ChatSource extends Source {
 	_init(client, account, author, conversation) {
 		super._init(client, account, author, conversation);
@@ -381,7 +691,7 @@ class ChatSource extends Source {
 	}
 
 	_makeMessage(author, text, _ts, direction) {
-		if(direction ==  TelepathyClient.NotificationDirection.RECEIVED &&
+		if(direction == NotificationDirection.RECEIVED &&
 				this._cbNames[author] == undefined){
 			let proxy = this._client.proxy;
 			let buddy = proxy.PurpleFindBuddySync(this._account, author);
@@ -395,23 +705,23 @@ class ChatSource extends Source {
 
 		var author_nick = null;
 
-		if (direction == TelepathyClient.NotificationDirection.SENT) {
+		if (direction == NotificationDirection.SENT) {
 			author_nick = "me";
-		} else if (direction == TelepathyClient.NotificationDirection.RECEIVED) {
+		} else if (direction == NotificationDirection.RECEIVED) {
 			author_nick = this._cbNames[author];
 		} else
 			author_nick = "";
 
-		return makeMessage('['+author_nick+']: ' + text, author, _ts, direction);
+		return makeMessage('[' + author_nick + ']: ' + text, author, _ts, direction);
 	}
 });
 
-class PidginBaseSearchProvider {
+class PidginSearchProvider {
 
-	_init(client){
-		super._init();
+	constructor(client){
 		this._client = client;
 		this._enabled = false;
+		this._resultSet = [];
 	}
 
 	enable() {
@@ -435,6 +745,18 @@ class PidginBaseSearchProvider {
 			}
 			this._enabled = false;
 		}
+	}
+
+	get appInfo() {
+		return null;
+	}
+
+	get canLaunchSearch() {
+		return false;
+	}
+
+	get id() {
+		return 'pidgin@muffinmad';
 	}
 
 	_createIconForBuddy(buddy, status_code, iconSize) {
@@ -481,6 +803,15 @@ class PidginBaseSearchProvider {
 				return this._createIconForBuddy(result.buddy, result.status_code, iconSize);
 			}
 		};
+	}
+
+	getResultMetas(results, cancellable = null) {
+		return new Promise((resolve, reject) => {
+			const resultMetas = [];
+			for (let identifier of results)
+				resultMetas.push(this.getResultMeta(this._resultSet[identifier]));
+			resolve(resultMetas);
+		});
 	}
 
 	filterResults(results, maxResults) {
@@ -556,132 +887,20 @@ class PidginBaseSearchProvider {
 			return this._filterBuddys(this._getBuddys(accounts), terms);
 		} catch (e) {
 			log(`PidginBaseSearchProvider::searchByTerms(${terms}): ${e}`);
+			return [];
 		}
 	}
 
-	activateResult(result) {
+	activateResult(result, terms) {
 		let p = this._client.proxy;
+		let buddy = this._resultSet[result];
 		p.PurpleConversationPresentRemote(p.PurpleConversationNewSync(
 			1,
-			p.PurpleBuddyGetAccountSync(result),
-			p.PurpleBuddyGetNameSync(result).toString()
+			p.PurpleBuddyGetAccountSync(buddy),
+			p.PurpleBuddyGetNameSync(buddy).toString()
 		));
 	}
 
-}
-
-
-var PidginLegacySearchProvider = GObject.registerClass(
-class PidginLegacySearchProvider extends (PidginBaseSearchProvider, GObject.Object) {
-	_init(client){
-		super._init();
-		this.id = 'pidgin';
-		this._client = client;
-		this._enabled = false;
-	}
-
-	getResultMetas(result, callback) {
-		let metas = result.map(this.getResultMeta, this);
-		callback(metas);
-	}
-
-	getInitialResultSet(terms, callback, cancellable) {
-		try {
-			callback(this.searchBuddysByTerms(terms));
-		} catch (e) {
-			log(e);
-		}
-	}
-
-	getSubsearchResultSet(previousResults, terms, callback, cancellable) {
-		callback(this._filterBuddys(previousResults, terms));
-	}
-});
-
-class PidginSearchProvider extends PidginBaseSearchProvider {
-	constructor(client){
-		super();
-		this._client = client;
-		this._enabled = false;
-		this._resultSet = [];
-	}
-
-	/**
-	 * The application of the provider.
-	 *
-	 * Applications will return a `Gio.AppInfo` representing themselves.
-	 * Extensions will usually return `null`.
-	 *
-	 * @type {Gio.AppInfo}
-	 */
-	get appInfo() {
-		return null;
-	}
-
-	/**
-	 * Whether the provider offers detailed results.
-	 *
-	 * Applications will return `true` if they have a way to display more
-	 * detailed or complete results. Extensions will usually return `false`.
-	 *
-	 * @type {boolean}
-	 */
-	get canLaunchSearch() {
-		return true;
-	}
-
-	/**
-	 * The unique ID of the provider.
-	 *
-	 * Applications will return their application ID. Extensions will usually
-	 * return their UUID.
-	 *
-	 * @type {string}
-	 */
-	get id() {
-		return ExtensionUtils.getCurrentExtension().uuid;
-	}
-
-	/**
-	 * Launch the search result.
-	 *
-	 * This method is called when a search provider result is activated.
-	 *
-	 * @param {string} result - The result identifier
-	 * @param {string[]} terms - The search terms
-	 */
-	activateResult(result, terms) {
-		super.activateResult(this._resultSet[result]);
-	}
-
-	/**
-	 * Get result metadata.
-	 *
-	 * This method is called to get a `ResultMeta` for each identifier.
-	 *
-	 * @param {string[]} results - The result identifiers
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<ResultMeta[]>} A list of result metadata objects
-	 */
-	getResultMetas(results, cancellable = null) {
-		return new Promise((resolve, reject) => {
-			const resultMetas = [];
-			for (let identifier of results)
-				resultMetas.push(this.getResultMeta(this._resultSet[identifier]));
-			resolve(resultMetas);
-		});
-	}
-
-	/**
-	 * Initiate a new search.
-	 *
-	 * This method is called to start a new search and should return a list of
-	 * unique identifiers for the results.
-	 *
-	 * @param {string[]} terms - The search terms
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<string[]>} A list of result identifiers
-	 */
 	getInitialResultSet(terms, cancellable = null) {
 		let provider = this;
 
@@ -697,50 +916,19 @@ class PidginSearchProvider extends PidginBaseSearchProvider {
 		});
 	}
 
-	/**
-	 * Refine the current search.
-	 *
-	 * This method is called to refine the current search results with
-	 * expanded terms and should return a subset of the original result set.
-	 *
-	 * Implementations may use this method to refine the search results more
-	 * efficiently than running a new search, or simply pass the terms to the
-	 * implementation of `getInitialResultSet()`.
-	 *
-	 * @param {string[]} results - The original result set
-	 * @param {string[]} terms - The search terms
-	 * @param {Gio.Cancellable} [cancellable] - A cancellable for the operation
-	 * @returns {Promise<string[]>}
-	 */
 	getSubsearchResultSet(results, terms, cancellable = null) {
 		return this._filterBuddys(Object.values(this._resultSet), terms);
 	}
 
-	/**
-	 * Filter the current search.
-	 *
-	 * This method is called to truncate the number of search results.
-	 *
-	 * Implementations may use their own criteria for discarding results, or
-	 * simply return the first n-items.
-	 *
-	 * @param {string[]} results - The original result set
-	 * @param {number} maxResults - The maximum amount of results
-	 * @returns {string[]} The filtered results
-	 */
 	filterResults(results, maxResults) {
-		if (results.length <= maxResults)
-			return results;
 		return results.slice(0, maxResults);
 	}
 }
 
-const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginIface);
+const Pidgin = Gio.DBusProxy.makeProxyWrapper(DBusIface.PidginInterface);
 
-var PidginClient = GObject.registerClass(
-class PidginClient extends GObject.Object {
-	_init() {
-		super._init();
+export default class PidginExtension extends Extension {
+	enable() {
 		this._sources = {};
 		this._pending_messages = {};
 		this._displayedImMsgId = 0;
@@ -749,6 +937,33 @@ class PidginClient extends GObject.Object {
 		this._disable_timestamp = 0;
 		this._searchProvider = null;
 		this._messageTrayIntegration = false;
+
+		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
+		this._settings = this.getSettings();
+		this._enableMessageTrayChangeId =
+			this._settings.connect(
+				'changed::enable-message-tray',
+				this._enableMessageTrayChanged.bind(this));
+		this._enableSearchProviderChangeId =
+			this._settings.connect(
+				'changed::enable-search-provider',
+				this._enableSearchProviderChanged.bind(this));
+		this._enableSearchProviderChanged();
+		this._enableMessageTrayChanged();
+	}
+
+	disable() {
+		this.disableMessageTrayIntegration();
+		this.disableSearchProvider();
+
+		if (this._enableSearchProviderChangeId > 0) {
+			this._settings.disconnect(this._enableSearchProviderChangeId);
+		}
+		if (this._enableMessageTrayChangeId > 0) {
+			this._settings.disconnect(this._enableMessageTrayChangeId);
+		}
+		this._proxy = null;
+		this._settings = null;
 	}
 
 	_enableMessageTrayChanged() {
@@ -765,21 +980,6 @@ class PidginClient extends GObject.Object {
 		} else {
 			this.disableSearchProvider();
 		}
-	}
-
-	enable() {
-		this._proxy = new Pidgin(Gio.DBus.session, 'im.pidgin.purple.PurpleService', '/im/pidgin/purple/PurpleObject');
-		this._settings = ExtensionUtils.getSettings();
-		this._enableMessageTrayChangeId =
-			this._settings.connect(
-				'changed::enable-message-tray',
-				this._enableMessageTrayChanged.bind(this));
-		this._enableSearchProviderChangeId =
-			this._settings.connect(
-				'changed::enable-search-provider',
-				this._enableSearchProviderChanged.bind(this));
-		this._enableSearchProviderChanged();
-		this._enableMessageTrayChanged();
 	}
 
 	enableMessageTrayIntegration() {
@@ -830,27 +1030,9 @@ class PidginClient extends GObject.Object {
 
 	enableSearchProvider() {
 		if (this._searchProvider == null) {
-			let [major, minor] = Config.PACKAGE_VERSION.split('.').map(s => Number(s));
-			if (major >= 43)
-				this._searchProvider = new PidginSearchProvider(this);
-			else
-				this._searchProvider = new PidginLegacySearchProvider(this);
+			this._searchProvider = new PidginSearchProvider(this);
 		}
 		this._searchProvider.enable();
-	}
-
-	disable() {
-		this.disableMessageTrayIntegration();
-		this.disableSearchProvider();
-
-		if (this._enableSearchProviderChangeId > 0) {
-			this._settings.disconnect(this._enableSearchProviderChangeId);
-		}
-		if (this._enableMessageTrayChangeId > 0) {
-			this._settings.disconnect(this._enableMessageTrayChangeId);
-		}
-		this._proxy = null;
-		this._settings = null;
 	}
 
 	disableMessageTrayIntegration() {
@@ -963,8 +1145,4 @@ class PidginClient extends GObject.Object {
 	_messageDisplayedChat(emitter, something, details){
 		this._messageDisplayed(details, true);
 	}
-});
-
-function init() {
-	return new PidginClient();
-}
+};
