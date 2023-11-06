@@ -20,18 +20,10 @@ Make Pidgin IM conversations appear in the Gnome Shell message tray
 - No notifications on locked screen even if notification settings allow it. Because Gnome Shell disables all extensions on screen lock
 
 ## Supported Gnome Shell Versions
-- v31: 3.10 - 3.30
-- v32: 3.32
-- v36: 3.36
-- v40: 40 - 42
+
+Recent master version supports latest Gnome Shell version. Versions with for older Gnome Shell support can be found on extensions.gnome.org.
 
 ## Installation
-
-### Requirements
-
-Because notifications used in this extension are based on Telepathy clien ones, shipped with gnome-shell, Telepathy typelib must be installed.
-
-As for Ubuntu 20.04 this is `gir1.2-telepathyglib-0.12` and `gir1.2-telepathylogger-0.2` packages.
 
 ### GNOME Shell Extensions
 
