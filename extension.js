@@ -333,6 +333,14 @@ class ChatNotificationBanner extends MessageTray.NotificationBanner {
 		}
 	}
 
+	destroy() {
+		if (this._composingTimeoutId) {
+			GLib.source_remove(this._composingTimeoutId);
+			this._composingStopTimeout();
+		}
+		super.destroy();
+	},
+
 	scrollTo(side) {
 		let adjustment = this._scrollArea.vscroll.adjustment;
 		if (side === St.Side.TOP) {
@@ -527,6 +535,9 @@ class Source extends MessageTray.Source {
 	}
 
 	destroy() {
+		if (this._banner) {
+			this._banner.destroy();
+		}
 		super.destroy();
 	}
 
