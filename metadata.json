@@ -6,5 +6,5 @@
     "gettext-domain": "gnome-shell-extension-pidgin",
     "settings-schema": "org.gnome.shell.extensions.pidgin",
     "shell-version": [ "45" ],
-    "version": 46
+    "version": 47
 }

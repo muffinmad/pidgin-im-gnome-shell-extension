@@ -339,7 +339,7 @@ class ChatNotificationBanner extends MessageTray.NotificationBanner {
 			this._composingStopTimeout();
 		}
 		super.destroy();
-	},
+	}
 
 	scrollTo(side) {
 		let adjustment = this._scrollArea.vscroll.adjustment;
